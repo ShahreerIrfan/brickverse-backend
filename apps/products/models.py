@@ -8,6 +8,8 @@ class Category(models.Model):
     label = models.CharField(max_length=100)
     color = models.CharField(max_length=20, default="#FF4D6D")
     icon_type = models.CharField(max_length=50, blank=True, help_text="e.g. figure, toon, brick, code")
+    category_icon = models.CharField(max_length=500, blank=True, default="", help_text="Category icon name, SVG path, or image URL")
+    category_icon_file = models.ImageField(upload_to='categories/icons/', blank=True, null=True)
     featured = models.BooleanField(default=False)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

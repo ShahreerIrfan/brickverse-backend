@@ -21,10 +21,23 @@ class SubCategorySerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     subcategories = SubCategorySerializer(many=True, read_only=True)
     productCount = serializers.SerializerMethodField(read_only=True)
+    categoryIcon = serializers.CharField(source='category_icon', required=False, allow_blank=True)
 
     class Meta:
         model = Category
-        fields = ['id', 'label', 'color', 'icon_type', 'featured', 'order', 'subcategories', 'productCount']
+        fields = [
+            'id',
+            'label',
+            'color',
+            'icon_type',
+            'category_icon',
+            'categoryIcon',
+            'category_icon_file',
+            'featured',
+            'order',
+            'subcategories',
+            'productCount',
+        ]
 
     def get_productCount(self, obj):
         from .models import Product

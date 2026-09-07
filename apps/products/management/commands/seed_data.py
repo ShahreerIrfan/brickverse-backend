@@ -109,14 +109,14 @@ class Command(BaseCommand):
         # =========================================================================
         self.stdout.write("2. Seeding parent categories...")
         categories_data = [
-            {"id": "figure", "label": "Anime figures", "color": "#FF4D6D", "icon_type": "figure", "featured": True, "order": 1},
-            {"id": "brick", "label": "Bricks & building sets", "color": "#13BFC9", "icon_type": "brick", "featured": True, "order": 2},
-            {"id": "code", "label": "Coding & STEM kits", "color": "#7B5CFF", "icon_type": "code", "featured": True, "order": 3},
-            {"id": "toon", "label": "Cartoon characters", "color": "#FFC93C", "icon_type": "toon", "featured": False, "order": 4},
-            {"id": "robot", "label": "Robotics", "color": "#4B7BFF", "icon_type": "robot", "featured": False, "order": 5},
-            {"id": "model", "label": "Model kits", "color": "#FF4D6D", "icon_type": "model", "featured": False, "order": 6},
-            {"id": "plush", "label": "Plush & Toys", "color": "#FF8A5B", "icon_type": "plush", "featured": False, "order": 7},
-            {"id": "statue", "label": "Collectible statues", "color": "#7B5CFF", "icon_type": "statue", "featured": False, "order": 8},
+            {"id": "figure", "label": "Anime figures", "color": "#FF4D6D", "icon_type": "figure", "category_icon": "/images/figure-samurai-red.svg", "featured": True, "order": 1},
+            {"id": "brick", "label": "Bricks & building sets", "color": "#13BFC9", "icon_type": "brick", "category_icon": "/images/bricks-car-teal.svg", "featured": True, "order": 2},
+            {"id": "code", "label": "Coding & STEM kits", "color": "#7B5CFF", "icon_type": "code", "category_icon": "/images/robot-purple.svg", "featured": True, "order": 3},
+            {"id": "toon", "label": "Cartoon characters", "color": "#FFC93C", "icon_type": "toon", "category_icon": "/images/toon-mascot.svg", "featured": False, "order": 4},
+            {"id": "robot", "label": "Robotics", "color": "#4B7BFF", "icon_type": "robot", "category_icon": "/images/robot-teal.svg", "featured": False, "order": 5},
+            {"id": "model", "label": "Model kits", "color": "#FF4D6D", "icon_type": "model", "category_icon": "/images/figure-mecha-teal.svg", "featured": False, "order": 6},
+            {"id": "plush", "label": "Plush & Toys", "color": "#FF8A5B", "icon_type": "plush", "category_icon": "/images/toon-mascot.svg", "featured": False, "order": 7},
+            {"id": "statue", "label": "Collectible statues", "color": "#7B5CFF", "icon_type": "statue", "category_icon": "/images/figure-mage-purple.svg", "featured": False, "order": 8},
         ]
 
         cat_objs = {}
@@ -127,12 +127,13 @@ class Command(BaseCommand):
                     "label": c["label"],
                     "color": c["color"],
                     "icon_type": c["icon_type"],
+                    "category_icon": c.get("category_icon", ""),
                     "featured": c["featured"],
                     "order": c["order"],
                 }
             )
             cat_objs[c["id"]] = cat_obj
-            self.stdout.write(f"   [+] Category: {cat_obj.label}")
+            self.stdout.write(f"   [+] Category: {cat_obj.label} (icon: {cat_obj.category_icon})")
 
         # =========================================================================
         # 3. SEED CHILD CATEGORIES (SubCategories)
