@@ -60,5 +60,5 @@ class AdminUserAdmin(BaseUserAdmin):
 @admin.register(CustomerProfile)
 class CustomerProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'tier', 'loyalty_points', 'created_at')
-    search_fields = ('user__email', 'shipping_address')
+    search_fields = ('user__email',)
     list_filter = ('tier',)

@@ -502,7 +502,6 @@ class Command(BaseCommand):
         customer_user.set_password("customer1234")
         customer_user.save()
         CustomerProfile.objects.filter(user=customer_user).update(
-            shipping_address="14 Maribyrnong St, Footscray VIC 3011",
             loyalty_points=350,
             tier="Silver"
         )

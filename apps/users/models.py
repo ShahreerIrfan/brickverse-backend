@@ -107,8 +107,6 @@ class CustomerUser(User):
 
 class CustomerProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='customer_profile')
-    shipping_address = models.TextField(blank=True)
-    billing_address = models.TextField(blank=True)
     loyalty_points = models.IntegerField(default=0)
     tier = models.CharField(max_length=50, default="Bronze")
     created_at = models.DateTimeField(auto_now_add=True)

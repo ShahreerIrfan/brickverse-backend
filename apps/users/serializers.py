@@ -4,7 +4,7 @@ from .models import User, AdminUser, CustomerUser, CustomerProfile
 class CustomerProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerProfile
-        fields = ['shipping_address', 'billing_address', 'loyalty_points', 'tier']
+        fields = ['loyalty_points', 'tier']
 
 
 class UserSerializer(serializers.ModelSerializer):

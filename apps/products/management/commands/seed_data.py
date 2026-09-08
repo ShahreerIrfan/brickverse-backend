@@ -96,8 +96,6 @@ class Command(BaseCommand):
                 CustomerProfile.objects.get_or_create(
                     user=user,
                     defaults={
-                        "shipping_address": "House 12, Road 4, Banani, Dhaka, Bangladesh",
-                        "billing_address": "House 12, Road 4, Banani, Dhaka, Bangladesh",
                         "loyalty_points": 350,
                         "tier": "VIP Gold",
                     }
