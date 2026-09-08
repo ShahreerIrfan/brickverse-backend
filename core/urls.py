@@ -5,7 +5,7 @@ from django.conf.urls.static import static
 from django.views.static import serve
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from apps.products.views import CategoryListView, SubCategoryListView, ProductSectionListView
+from apps.products.views import CategoryListView, CategoryDetailView, SubCategoryListView, SubCategoryDetailView, ProductSectionListView
 from apps.marketing.views import NewsletterSubscribeView
 
 class APIRootView(APIView):
@@ -43,7 +43,9 @@ urlpatterns = [
 
     # Direct top-level aliases
     path('api/categories/', CategoryListView.as_view(), name='top-categories'),
+    path('api/categories/<str:id>/', CategoryDetailView.as_view(), name='top-category-detail'),
     path('api/subcategories/', SubCategoryListView.as_view(), name='top-subcategories'),
+    path('api/subcategories/<str:id>/', SubCategoryDetailView.as_view(), name='top-subcategory-detail'),
     path('api/sections/', ProductSectionListView.as_view(), name='top-sections'),
     path('api/newsletter/subscribe/', NewsletterSubscribeView.as_view(), name='top-newsletter'),
 
