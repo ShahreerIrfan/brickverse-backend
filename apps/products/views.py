@@ -12,12 +12,14 @@ from .serializers import (
 )
 
 class CategoryListView(generics.ListCreateAPIView):
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = Category.objects.prefetch_related('subcategories').all().order_by('order', 'label')
     serializer_class = CategorySerializer
     pagination_class = None
 
 
 class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     lookup_field = 'id'

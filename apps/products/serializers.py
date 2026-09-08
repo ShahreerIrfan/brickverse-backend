@@ -38,10 +38,30 @@ class CategorySerializer(serializers.ModelSerializer):
             'subcategories',
             'productCount',
         ]
+        extra_kwargs = {
+            'category_icon': {'required': False, 'allow_blank': True},
+            'category_icon_file': {'required': False, 'allow_null': True},
+        }
 
     def get_productCount(self, obj):
         from .models import Product
         return Product.objects.filter(category__icontains=obj.id).count()
+
+    def create(self, validated_data):
+        icon_file = validated_data.get('category_icon_file')
+        instance = super().create(validated_data)
+        if icon_file and instance.category_icon_file:
+            instance.category_icon = instance.category_icon_file.url
+            instance.save(update_fields=['category_icon'])
+        return instance
+
+    def update(self, instance, validated_data):
+        icon_file = validated_data.get('category_icon_file')
+        instance = super().update(instance, validated_data)
+        if icon_file and instance.category_icon_file:
+            instance.category_icon = instance.category_icon_file.url
+            instance.save(update_fields=['category_icon'])
+        return instance
 
 
 class ProductGalleryImageSerializer(serializers.ModelSerializer):
