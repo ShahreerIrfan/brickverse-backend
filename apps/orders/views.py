@@ -113,6 +113,38 @@ class OrderListView(APIView):
         serializer = OrderSerializer(queryset, many=True)
         return Response(serializer.data)
 
+    def post(self, request):
+        import uuid
+        data = request.data
+        customer_name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or data.get('customer_name', 'Valued Customer')
+        customer_email = data.get('customer_email') or data.get('email', 'guest@brickverse.com')
+        customer_phone = data.get('customer_phone') or data.get('phone', '')
+        shipping_address = f"{data.get('address', '')}, {data.get('city', '')}".strip(', ') or data.get('shipping_address', 'Dhaka, Bangladesh')
+        total_amount = float(data.get('total_amount', 0))
+        order_number = f"BV-{uuid.uuid4().hex[:6].upper()}"
+
+        order = Order.objects.create(
+            order_number=order_number,
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone,
+            shipping_address=shipping_address,
+            total_amount=total_amount,
+            status='pending',
+            carrier='Pathao Express (COD)'
+        )
+
+        items_data = data.get('items', [])
+        for item in items_data:
+            OrderItem.objects.create(
+                order=order,
+                product_name=item.get('name', 'Product Item'),
+                price=float(item.get('price', 0)),
+                quantity=int(item.get('quantity', 1))
+            )
+
+        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+
 
 class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Order.objects.all().prefetch_related('items')
