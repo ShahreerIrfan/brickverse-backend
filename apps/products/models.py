@@ -99,7 +99,7 @@ class Product(models.Model):
             self.id = self.slug or f"prod-{random.randint(1000, 9999)}"
         if not self.sku:
             clean_part = slugify(self.name).upper()[:6].replace('-', '') or "PROD"
-            self.sku = f"BV-{clean_part}-{random.randint(1000, 9999)}"
+            self.sku = f"KS-{clean_part}-{random.randint(1000, 9999)}"
             
         # Synchronize regular_price & original_price
         if self.regular_price and self.regular_price != "৳0.00":

@@ -122,7 +122,7 @@ class OrderListView(APIView):
         district_val = data.get('district') or data.get('city', '')
         shipping_address = f"{data.get('address', '')}, {district_val}".strip(', ') or data.get('shipping_address', 'Dhaka, Bangladesh')
         total_amount = float(data.get('total_amount', 0))
-        order_number = f"BV-{uuid.uuid4().hex[:6].upper()}"
+        order_number = f"KS-{uuid.uuid4().hex[:6].upper()}"
 
         order = Order.objects.create(
             order_number=order_number,
