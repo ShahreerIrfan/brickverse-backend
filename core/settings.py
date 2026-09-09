@@ -72,17 +72,38 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'True').lower() in ('true', '1', 't')
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.kawaiisubete\.com$",
+    r"^https://kawaiisubete\.com$",
+    r"^http://.*\.kawaiisubete\.com$",
+    r"^http://kawaiisubete\.com$",
+    r"^https://.*\.eezzymart\.tech$",
+    r"^http://localhost(:\d+)?$",
+    r"^http://127\.0\.0\.1(:\d+)?$",
+]
+
 raw_cors_origins = os.getenv(
     'CORS_ALLOWED_ORIGINS',
-    'https://brickverse.eezzymart.tech,https://brickbackend.eezzymart.tech,http://localhost:3000,http://127.0.0.1:3000'
+    'https://kawaiisubete.com,https://www.kawaiisubete.com,https://api.kawaiisubete.com,https://brickverse.eezzymart.tech,https://brickbackend.eezzymart.tech,http://localhost:3000,http://127.0.0.1:3000'
 )
-CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors_origins.split(',') if o.strip()]
+# Ensure all origin URLs have trailing slashes stripped
+CORS_ALLOWED_ORIGINS = [o.strip().rstrip('/') for o in raw_cors_origins.split(',') if o.strip()]
 
 raw_csrf_origins = os.getenv(
     'CSRF_TRUSTED_ORIGINS',
-    'https://brickbackend.eezzymart.tech,https://brickverse.eezzymart.tech,http://localhost:3000,http://127.0.0.1:3000'
+    'https://kawaiisubete.com,https://www.kawaiisubete.com,https://api.kawaiisubete.com,https://brickbackend.eezzymart.tech,https://brickverse.eezzymart.tech,http://localhost:3000,http://127.0.0.1:3000'
 )
-CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf_origins.split(',') if o.strip()]
+# Ensure all CSRF trusted URLs have trailing slashes stripped
+CSRF_TRUSTED_ORIGINS = [o.strip().rstrip('/') for o in raw_csrf_origins.split(',') if o.strip()]
+
+# Reverse proxy SSL header (Traefik / Nginx / Dokploy)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+if not DEBUG:
+    SESSION_COOKIE_SAMESITE = 'None'
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SECURE = True
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
