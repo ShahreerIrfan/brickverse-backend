@@ -119,7 +119,8 @@ class OrderListView(APIView):
         customer_name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or data.get('customer_name', 'Valued Customer')
         customer_email = data.get('customer_email') or data.get('email', 'guest@brickverse.com')
         customer_phone = data.get('customer_phone') or data.get('phone', '')
-        shipping_address = f"{data.get('address', '')}, {data.get('city', '')}".strip(', ') or data.get('shipping_address', 'Dhaka, Bangladesh')
+        district_val = data.get('district') or data.get('city', '')
+        shipping_address = f"{data.get('address', '')}, {district_val}".strip(', ') or data.get('shipping_address', 'Dhaka, Bangladesh')
         total_amount = float(data.get('total_amount', 0))
         order_number = f"BV-{uuid.uuid4().hex[:6].upper()}"
 
