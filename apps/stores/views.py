@@ -1,6 +1,7 @@
-from rest_framework import generics, status
+from rest_framework import generics, status, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from django.db import transaction
 from django.db.models import Q
 from decimal import Decimal, InvalidOperation
 from apps.products.models import Product
@@ -47,27 +48,45 @@ class PartnerStoreListView(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         # Support the "starting stock" rows the Add Store form can submit alongside the store itself.
-        response = super().create(request, *args, **kwargs)
-        store = PartnerStore.objects.get(id=response.data['id'])
-        starting_stock = request.data.get('startingStock', [])
-        for row in starting_stock:
-            product_id = row.get('productId')
-            product = Product.objects.filter(id=product_id).first()
-            try:
-                qty = int(row.get('qty', 0))
-            except (TypeError, ValueError):
-                qty = 0
-            if not product or qty <= 0:
-                continue
-            line, _ = StoreProductLine.objects.get_or_create(
-                store=store, product=product, defaults={'tp_at_time': _parse_tp(product)}
-            )
-            line.qty_given += qty
-            line.save()
-            StoreTransactionLog.objects.create(
-                store=store, line=line, event_type='given', quantity=qty,
-                created_by=request.user if request.user.is_authenticated else None,
-            )
+        with transaction.atomic():
+            response = super().create(request, *args, **kwargs)
+            store = PartnerStore.objects.get(id=response.data['id'])
+            starting_stock = request.data.get('startingStock', [])
+
+            for row in starting_stock:
+                try:
+                    qty = int(row.get('qty', 0))
+                except (TypeError, ValueError):
+                    qty = 0
+                if qty <= 0:
+                    continue
+
+                product_id = row.get('productId')
+                product = Product.objects.select_for_update().filter(id=product_id).first()
+                if not product:
+                    continue
+
+                available = product.stock if product.stock is not None else 0
+                if qty > available:
+                    # Abort the whole store creation and surface which product failed
+                    raise serializers.ValidationError(
+                        {"error": f"Only {available} unit(s) of {product.name} are available in stock."}
+                    )
+
+                product.stock = available - qty
+                product.save(update_fields=['stock'])
+
+                line, _ = StoreProductLine.objects.get_or_create(
+                    store=store, product=product, defaults={'tp_at_time': _parse_tp(product)}
+                )
+                line.qty_given += qty
+                line.save()
+
+                StoreTransactionLog.objects.create(
+                    store=store, line=line, event_type='given', quantity=qty,
+                    created_by=request.user if request.user.is_authenticated else None,
+                )
+
         return Response(PartnerStoreDetailSerializer(store).data, status=status.HTTP_201_CREATED)
 
 
@@ -81,36 +100,48 @@ class PartnerStoreDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class StoreAddProductView(APIView):
-    """POST { productId, qty } -> adds/increments a StoreProductLine, snapshots TP, logs it."""
+    """POST { productId, qty } -> adds/increments a StoreProductLine, snapshots TP, logs it, and deducts from Product.stock."""
     permission_classes = [IsAdminRole]
 
     def post(self, request, id):
         store = PartnerStore.objects.filter(id=id).first()
         if not store:
             return Response({"error": "Store not found"}, status=status.HTTP_404_NOT_FOUND)
-            
-        product = Product.objects.filter(id=request.data.get('productId')).first()
+
         try:
             qty = int(request.data.get('qty', 0))
         except (TypeError, ValueError):
             qty = 0
-            
-        if not product or qty <= 0:
-            return Response({"error": "productId and a positive qty are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        line, created = StoreProductLine.objects.get_or_create(
-            store=store, product=product, defaults={'tp_at_time': _parse_tp(product)}
-        )
-        if not created:
+        if qty <= 0:
+            return Response({"error": "qty must be a positive number."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            product = Product.objects.select_for_update().filter(id=request.data.get('productId')).first()
+            if not product:
+                return Response({"error": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            available = product.stock if product.stock is not None else 0
+            if qty > available:
+                return Response(
+                    {"error": f"Only {available} unit(s) of {product.name} are available in stock."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            product.stock = available - qty
+            product.save(update_fields=['stock'])
+
+            line, _ = StoreProductLine.objects.get_or_create(
+                store=store, product=product, defaults={'tp_at_time': _parse_tp(product)}
+            )
             line.qty_given += qty
             line.save()
-        else:
-            line.qty_given = qty
-            line.save()
 
-        StoreTransactionLog.objects.create(
-            store=store, line=line, event_type='given', quantity=qty, created_by=request.user if request.user.is_authenticated else None,
-        )
+            StoreTransactionLog.objects.create(
+                store=store, line=line, event_type='given', quantity=qty,
+                created_by=request.user if request.user.is_authenticated else None,
+            )
+
         return Response(StoreProductLineSerializer(line).data, status=status.HTTP_201_CREATED)
 
 
