@@ -23,8 +23,14 @@ class StoreProductLineSerializer(serializers.ModelSerializer):
                   'qtyGiven', 'qtySold', 'qtyReturned', 'qtyRemaining', 'valueGiven', 'valueSold']
 
     def get_productImage(self, obj):
-        if obj.product and obj.product.image:
-            return obj.product.image.url
+        if obj.product:
+            if getattr(obj.product, 'image_file', None):
+                try:
+                    return obj.product.image_file.url
+                except Exception:
+                    pass
+            if getattr(obj.product, 'image', None):
+                return str(obj.product.image)
         return "/images/figure-samurai-red.svg"
 
     def get_qtyRemaining(self, obj):

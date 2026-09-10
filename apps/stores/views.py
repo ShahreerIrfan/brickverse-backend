@@ -13,10 +13,13 @@ from .serializers import (
 
 
 def _parse_tp(product: Product) -> Decimal:
-    """Product.trade_price is a display string like '৳850.00' — parse it safely."""
-    raw = str(product.trade_price or "0").replace('৳', '').replace(',', '').strip()
+    """Product.trade_price is a display string like '৳850.00' — parse it safely with fallbacks."""
+    if not product:
+        return Decimal('0')
+    raw = str(product.trade_price or product.discounted_price or product.price or product.regular_price or "0").replace('৳', '').replace(',', '').strip()
     try:
-        return Decimal(raw)
+        val = Decimal(raw)
+        return val if val >= 0 else Decimal('0')
     except (InvalidOperation, TypeError, ValueError):
         return Decimal('0')
 
