@@ -2,13 +2,14 @@ from rest_framework import generics, filters, status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from django.db.models import Q
-from .models import Category, SubCategory, ProductSection, Product, ProductReview
+from .models import Category, SubCategory, ProductSection, Product, ProductReview, ProductGalleryImage
 from .serializers import (
     CategorySerializer,
     SubCategorySerializer,
     ProductSectionSerializer,
     ProductSerializer,
     ProductReviewSerializer,
+    ProductGalleryImageSerializer,
 )
 
 class CategoryListView(generics.ListCreateAPIView):
@@ -123,4 +124,11 @@ class ProductBulkDeleteView(generics.GenericAPIView):
 
     def delete(self, request, *args, **kwargs):
         return self.post(request, *args, **kwargs)
+
+
+class ProductGalleryImageDeleteView(generics.DestroyAPIView):
+    queryset = ProductGalleryImage.objects.all()
+    serializer_class = ProductGalleryImageSerializer
+    lookup_field = 'id'
+
 

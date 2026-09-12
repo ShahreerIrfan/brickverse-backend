@@ -219,6 +219,31 @@ class ProductSerializer(serializers.ModelSerializer):
 
         instance = super().update(instance, validated_data)
 
+        # Process deletion of existing gallery images if requested
+        if request:
+            delete_ids = []
+            if hasattr(request, 'data') and hasattr(request.data, 'getlist'):
+                delete_ids.extend(request.data.getlist('delete_gallery_ids'))
+            if hasattr(request, 'data') and 'delete_gallery_ids' in request.data:
+                val = request.data.get('delete_gallery_ids')
+                if isinstance(val, list):
+                    delete_ids.extend(val)
+                elif isinstance(val, str) and ',' in val:
+                    delete_ids.extend(val.split(','))
+                elif isinstance(val, (int, str)):
+                    delete_ids.append(val)
+            if hasattr(request, 'POST') and hasattr(request.POST, 'getlist'):
+                delete_ids.extend(request.POST.getlist('delete_gallery_ids'))
+
+            clean_ids = []
+            for item in delete_ids:
+                item_str = str(item).strip()
+                if item_str.isdigit():
+                    clean_ids.append(int(item_str))
+
+            if clean_ids:
+                instance.gallery_images.filter(id__in=clean_ids).delete()
+
         # Process multi-file gallery images from request.FILES
         if request and hasattr(request, 'FILES'):
             gallery_files = request.FILES.getlist('gallery_files')
