@@ -9,6 +9,9 @@ python manage.py migrate --noinput
 echo "==> Collecting static files..."
 python manage.py collectstatic --noinput
 
+echo "==> Ensuring media images are synced..."
+python manage.py seed_production_images || true
+
 echo "==> Starting Gunicorn server on 0.0.0.0:${PORT:-8000}..."
 exec gunicorn core.wsgi:application \
     --bind 0.0.0.0:${PORT:-8000} \

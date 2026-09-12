@@ -9,7 +9,7 @@ class Category(models.Model):
     color = models.CharField(max_length=20, default="#FF4D6D")
     icon_type = models.CharField(max_length=50, blank=True, help_text="e.g. figure, toon, brick, code")
     category_icon = models.CharField(max_length=500, blank=True, default="", help_text="Category icon name, SVG path, or image URL")
-    category_icon_file = models.ImageField(upload_to='categories/icons/', blank=True, null=True)
+    category_icon_file = models.FileField(upload_to='categories/icons/', blank=True, null=True)
     featured = models.BooleanField(default=False)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -68,8 +68,8 @@ class Product(models.Model):
     subcategory = models.ForeignKey(SubCategory, related_name='products', on_delete=models.SET_NULL, null=True, blank=True)
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True)
-    image = models.ImageField(upload_to='products/', blank=True, null=True)
-    image_file = models.ImageField(upload_to='products/', blank=True, null=True)
+    image = models.FileField(upload_to='products/', blank=True, null=True)
+    image_file = models.FileField(upload_to='products/', blank=True, null=True)
     card_bg = models.CharField(max_length=20, default="#FFEAF0")
     rating = models.FloatField(default=5.0)
     reviews = models.IntegerField(default=0)
@@ -130,7 +130,7 @@ class Product(models.Model):
 
 class ProductGalleryImage(models.Model):
     product = models.ForeignKey(Product, related_name='gallery_images', on_delete=models.CASCADE)
-    image_file = models.ImageField(upload_to='products/gallery/', blank=True, null=True)
+    image_file = models.FileField(upload_to='products/gallery/', blank=True, null=True)
     image_url = models.CharField(max_length=500, blank=True)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-65 -105 130 210">
+<ellipse cx="0" cy="86" rx="46" ry="9" fill="#171136" opacity="0.12"/>
+<circle cx="-26" cy="68" r="16" fill="#171136"/>
+<circle cx="-26" cy="68" r="7" fill="#FFE7D6"/>
+<circle cx="26" cy="68" r="16" fill="#171136"/>
+<circle cx="26" cy="68" r="7" fill="#FFE7D6"/>
+<rect x="-40" y="-6" width="80" height="66" rx="20" fill="#FF4D6D"/>
+<rect x="-26" y="6" width="52" height="36" rx="12" fill="#151033"/>
+<text x="0" y="30" font-family="Poppins, Inter, sans-serif" font-size="20" font-weight="800" fill="#13BFC9" text-anchor="middle">&lt;/&gt;</text>
+<rect x="-56" y="2" width="16" height="46" rx="8" fill="#FF4D6D" transform="rotate(-8 -48 25)"/>
+<rect x="40" y="2" width="16" height="46" rx="8" fill="#FF4D6D" transform="rotate(8 48 25)"/>
+<circle cx="-52" cy="50" r="9" fill="#FFE7D6"/>
+<circle cx="52" cy="50" r="9" fill="#FFE7D6"/>
+<rect x="-34" y="-64" width="68" height="58" rx="20" fill="#FFE7D6"/>
+<rect x="-24" y="-50" width="48" height="26" rx="11" fill="#151033"/>
+<circle cx="-11" cy="-37" r="6" fill="#FFFFFF"/>
+<circle cx="11" cy="-37" r="6" fill="#FFFFFF"/>
+<circle cx="-10" cy="-36" r="2.8" fill="#151033"/>
+<circle cx="12" cy="-36" r="2.8" fill="#151033"/>
+<path d="M-8 -18c5 5 11 5 16 0" fill="none" stroke="#3B3468" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="-42" y="-50" width="8" height="22" rx="4" fill="#FF4D6D"/>
+<rect x="34" y="-50" width="8" height="22" rx="4" fill="#FF4D6D"/>
+<line x1="0" y1="-64" x2="0" y2="-84" stroke="#FFE7D6" stroke-width="4" stroke-linecap="round"/>
+<circle cx="0" cy="-90" r="8" fill="#FFC93C"/>
+</svg>
