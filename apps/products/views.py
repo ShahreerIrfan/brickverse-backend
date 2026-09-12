@@ -105,3 +105,22 @@ class ProductReviewCreateView(generics.CreateAPIView):
         product = Product.objects.get(id=product_id)
         serializer.save(product=product)
 
+
+class ProductBulkDeleteView(generics.GenericAPIView):
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def post(self, request, *args, **kwargs):
+        ids = request.data.get('ids', [])
+        if not ids or not isinstance(ids, list):
+            return Response({"error": "A list of product IDs is required in 'ids'."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        deleted_count, _ = Product.objects.filter(id__in=ids).delete()
+        return Response({
+            "success": True,
+            "deleted_count": deleted_count,
+            "message": f"Successfully deleted {deleted_count} product(s)."
+        }, status=status.HTTP_200_OK)
+
+    def delete(self, request, *args, **kwargs):
+        return self.post(request, *args, **kwargs)
+
