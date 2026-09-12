@@ -24,13 +24,23 @@ class StoreProductLineSerializer(serializers.ModelSerializer):
 
     def get_productImage(self, obj):
         if obj.product:
-            if getattr(obj.product, 'image_file', None):
+            img = getattr(obj.product, 'image', None) or getattr(obj.product, 'image_file', None)
+            if img:
                 try:
-                    return obj.product.image_file.url
+                    url = img.url
+                    request = self.context.get('request')
+                    if request and not url.startswith(('http://', 'https://')):
+                        return request.build_absolute_uri(url)
+                    return url
                 except Exception:
-                    pass
-            if getattr(obj.product, 'image', None):
-                return str(obj.product.image)
+                    val = str(img)
+                    if val:
+                        if val.startswith(('http://', 'https://', '/images/')):
+                            return val
+                        request = self.context.get('request')
+                        if request:
+                            return request.build_absolute_uri(f"/media/{val.lstrip('/')}")
+                        return f"/media/{val.lstrip('/')}"
         return "/images/figure-samurai-red.svg"
 
     def get_qtyRemaining(self, obj):

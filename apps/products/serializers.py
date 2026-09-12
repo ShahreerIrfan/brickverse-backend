@@ -87,6 +87,7 @@ class ProductReviewSerializer(serializers.ModelSerializer):
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
     categoryColor = serializers.CharField(source='category_color', required=False, allow_blank=True)
     cardBg = serializers.CharField(source='card_bg', required=False, allow_blank=True)
     originalPrice = serializers.CharField(source='original_price', required=False, allow_null=True, allow_blank=True)
@@ -136,9 +137,28 @@ class ProductSerializer(serializers.ModelSerializer):
             'section': {'required': False},
             'slug': {'required': False},
             'sku': {'required': False},
-            'image': {'required': False, 'allow_blank': True},
             'image_file': {'required': False, 'allow_null': True},
         }
+
+    def get_image(self, obj):
+        img = obj.image or getattr(obj, 'image_file', None)
+        if img:
+            try:
+                url = img.url
+                request = self.context.get('request')
+                if request and not url.startswith(('http://', 'https://')):
+                    return request.build_absolute_uri(url)
+                return url
+            except Exception:
+                val = str(img)
+                if val:
+                    if val.startswith(('http://', 'https://', '/images/')):
+                        return val
+                    request = self.context.get('request')
+                    if request:
+                        return request.build_absolute_uri(f"/media/{val.lstrip('/')}")
+                    return f"/media/{val.lstrip('/')}"
+        return "/images/figure-samurai-red.svg"
 
     def create(self, validated_data):
         subcat_id = validated_data.pop('subcategoryId', None)
@@ -153,19 +173,18 @@ class ProductSerializer(serializers.ModelSerializer):
             if first_sec:
                 validated_data['section'] = first_sec
 
-        image_file = validated_data.get('image_file')
-        if image_file:
-            instance = super().create(validated_data)
-            if instance.image_file:
-                instance.image = instance.image_file.url
-                instance.save(update_fields=['image'])
-        else:
-            if not validated_data.get('image'):
-                validated_data['image'] = '/images/figure-samurai-red.svg'
-            instance = super().create(validated_data)
+        request = self.context.get('request')
+        img_upload = None
+        if request and hasattr(request, 'FILES'):
+            img_upload = request.FILES.get('image') or request.FILES.get('image_file')
+
+        if img_upload:
+            validated_data['image'] = img_upload
+            validated_data['image_file'] = img_upload
+
+        instance = super().create(validated_data)
 
         # Process multi-file gallery images from request.FILES
-        request = self.context.get('request')
         if request and hasattr(request, 'FILES'):
             gallery_files = request.FILES.getlist('gallery_files')
             for idx, g_file in enumerate(gallery_files):
@@ -191,13 +210,16 @@ class ProductSerializer(serializers.ModelSerializer):
                 except SubCategory.DoesNotExist:
                     pass
 
+        request = self.context.get('request')
+        if request and hasattr(request, 'FILES'):
+            img_upload = request.FILES.get('image') or request.FILES.get('image_file')
+            if img_upload:
+                validated_data['image'] = img_upload
+                validated_data['image_file'] = img_upload
+
         instance = super().update(instance, validated_data)
-        if instance.image_file:
-            instance.image = instance.image_file.url
-            instance.save(update_fields=['image'])
 
         # Process multi-file gallery images from request.FILES
-        request = self.context.get('request')
         if request and hasattr(request, 'FILES'):
             gallery_files = request.FILES.getlist('gallery_files')
             if gallery_files:

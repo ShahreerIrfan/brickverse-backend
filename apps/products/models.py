@@ -68,7 +68,7 @@ class Product(models.Model):
     subcategory = models.ForeignKey(SubCategory, related_name='products', on_delete=models.SET_NULL, null=True, blank=True)
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True)
-    image = models.CharField(max_length=500, blank=True, default="/images/figure-samurai-red.svg")
+    image = models.ImageField(upload_to='products/', blank=True, null=True)
     image_file = models.ImageField(upload_to='products/', blank=True, null=True)
     card_bg = models.CharField(max_length=20, default="#FFEAF0")
     rating = models.FloatField(default=5.0)
