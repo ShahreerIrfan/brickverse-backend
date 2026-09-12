@@ -184,9 +184,9 @@ class ProductSerializer(serializers.ModelSerializer):
 
         instance = super().create(validated_data)
 
-        # Process multi-file gallery images from request.FILES
+        # Process multi-file gallery images from request.FILES (Maximum 4 allowed)
         if request and hasattr(request, 'FILES'):
-            gallery_files = request.FILES.getlist('gallery_files')
+            gallery_files = request.FILES.getlist('gallery_files')[:4]
             for idx, g_file in enumerate(gallery_files):
                 g_obj = ProductGalleryImage.objects.create(
                     product=instance,
@@ -244,15 +244,17 @@ class ProductSerializer(serializers.ModelSerializer):
             if clean_ids:
                 instance.gallery_images.filter(id__in=clean_ids).delete()
 
-        # Process multi-file gallery images from request.FILES
+        # Process multi-file gallery images from request.FILES (Total maximum 4 gallery images)
         if request and hasattr(request, 'FILES'):
-            gallery_files = request.FILES.getlist('gallery_files')
+            current_count = instance.gallery_images.count()
+            allowed_slots = max(0, 4 - current_count)
+            gallery_files = request.FILES.getlist('gallery_files')[:allowed_slots]
             if gallery_files:
                 for idx, g_file in enumerate(gallery_files):
                     g_obj = ProductGalleryImage.objects.create(
                         product=instance,
                         image_file=g_file,
-                        order=instance.gallery_images.count() + idx
+                        order=current_count + idx
                     )
                     if g_obj.image_file:
                         g_obj.image_url = g_obj.image_file.url
