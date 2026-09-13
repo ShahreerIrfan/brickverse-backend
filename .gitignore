@@ -29,5 +29,8 @@ wheels/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
-media/
+media/*
+!media/products/
+!media/products/*.svg
+!media/categories/
 staticfiles/
