@@ -99,6 +99,13 @@ raw_csrf_origins = os.getenv(
 # Ensure all CSRF trusted URLs have trailing slashes stripped
 CSRF_TRUSTED_ORIGINS = [o.strip().rstrip('/') for o in raw_csrf_origins.split(',') if o.strip()]
 
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'cache-control',
+    'pragma',
+    'expires',
+]
+
 # Reverse proxy SSL header (Traefik / Nginx / Dokploy)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
