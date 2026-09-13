@@ -19,6 +19,9 @@ class SystemLogListView(APIView):
         limit = int(request.query_params.get('limit', 100))
         limit = min(max(1, limit), 300)
 
+        # Automatically purge expired logs based on configured retention policy
+        auto_prune_expired_logs()
+
         logs_data = []
         total_count = 0
         error_count = 0
@@ -99,6 +102,9 @@ class SystemLogListView(APIView):
 
         uptime_secs = int(time.time() - SERVER_START_TIME)
 
+        from .models import LogRetentionSetting
+        setting = LogRetentionSetting.get_setting()
+
         return Response({
             "logs": logs_data,
             "metrics": {
@@ -111,6 +117,9 @@ class SystemLogListView(APIView):
                 "server_status": "Degraded" if error_count > 5 else "Operational",
                 "python_version": sys.version.split()[0],
                 "django_version": django.get_version(),
+                "retention_days": setting.retention_days,
+                "is_auto_delete_enabled": setting.is_auto_delete_enabled,
+                "last_cleaned_at": setting.last_cleaned_at,
             }
         })
 
@@ -182,3 +191,89 @@ ValueError: Sample simulated production exception for log verification"""
             pass
 
         return Response({"success": True, "message": f"Created test {level} log."})
+
+
+def auto_prune_expired_logs():
+    """Prunes logs older than the configured retention_days."""
+    try:
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import LogRetentionSetting
+
+        setting = LogRetentionSetting.get_setting()
+        if setting.is_auto_delete_enabled and setting.retention_days > 0:
+            cutoff = timezone.now() - timedelta(days=setting.retention_days)
+            deleted, _ = SystemLog.objects.filter(created_at__lt=cutoff).delete()
+            setting.last_cleaned_at = timezone.now()
+            setting.save(update_fields=['last_cleaned_at'])
+            return deleted
+    except Exception:
+        pass
+    return 0
+
+
+class LogRetentionView(APIView):
+    def get(self, request):
+        from .models import LogRetentionSetting
+        setting = LogRetentionSetting.get_setting()
+        return Response({
+            "retention_days": setting.retention_days,
+            "is_auto_delete_enabled": setting.is_auto_delete_enabled,
+            "last_cleaned_at": setting.last_cleaned_at,
+        })
+
+    def post(self, request):
+        from .models import LogRetentionSetting
+        setting = LogRetentionSetting.get_setting()
+        
+        retention_days = request.data.get('retention_days')
+        is_auto_delete_enabled = request.data.get('is_auto_delete_enabled')
+
+        if retention_days is not None:
+            try:
+                setting.retention_days = max(0, int(retention_days))
+            except ValueError:
+                pass
+
+        if is_auto_delete_enabled is not None:
+            setting.is_auto_delete_enabled = bool(is_auto_delete_enabled)
+
+        setting.save()
+
+        # Run auto-pruning immediately with new setting
+        pruned_count = auto_prune_expired_logs()
+
+        return Response({
+            "success": True,
+            "message": f"Log retention policy updated to {setting.retention_days} day(s).",
+            "retention_days": setting.retention_days,
+            "is_auto_delete_enabled": setting.is_auto_delete_enabled,
+            "last_cleaned_at": setting.last_cleaned_at,
+            "pruned_count": pruned_count,
+        })
+
+
+class PruneLogsView(APIView):
+    def post(self, request):
+        days = request.data.get('days')
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import LogRetentionSetting
+
+        try:
+            days_val = int(days) if days is not None else LogRetentionSetting.get_setting().retention_days
+            cutoff = timezone.now() - timedelta(days=max(1, days_val))
+            deleted, _ = SystemLog.objects.filter(created_at__lt=cutoff).delete()
+            
+            setting = LogRetentionSetting.get_setting()
+            setting.last_cleaned_at = timezone.now()
+            setting.save(update_fields=['last_cleaned_at'])
+
+            return Response({
+                "success": True,
+                "deleted_count": deleted,
+                "message": f"Deleted {deleted} log(s) older than {days_val} day(s)."
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+

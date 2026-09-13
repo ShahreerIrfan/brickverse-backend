@@ -31,3 +31,23 @@ class SystemLog(models.Model):
     def __str__(self):
         status = f" [{self.status_code}]" if self.status_code else ""
         return f"[{self.level}] {self.method or ''} {self.path or ''}{status} - {self.message[:60]}"
+
+
+class LogRetentionSetting(models.Model):
+    retention_days = models.IntegerField(default=1)
+    is_auto_delete_enabled = models.BooleanField(default=True)
+    last_cleaned_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Log Retention Setting'
+        verbose_name_plural = 'Log Retention Settings'
+
+    @classmethod
+    def get_setting(cls):
+        setting, _ = cls.objects.get_or_create(id=1, defaults={'retention_days': 1, 'is_auto_delete_enabled': True})
+        return setting
+
+    def __str__(self):
+        return f"Retain for {self.retention_days} days (Auto-delete: {self.is_auto_delete_enabled})"
+
