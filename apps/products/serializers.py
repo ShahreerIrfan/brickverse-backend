@@ -144,20 +144,22 @@ class ProductSerializer(serializers.ModelSerializer):
         img = obj.image or getattr(obj, 'image_file', None)
         if img:
             try:
-                url = img.url
+                url = img.url if hasattr(img, 'url') else str(img)
+            except Exception:
+                url = str(img)
+            if url:
+                if url.startswith(('http://', 'https://', '/images/')):
+                    return url
+                if not url.startswith('/media/'):
+                    clean = url.lstrip('/')
+                    if not clean.startswith('media/'):
+                        url = f"/media/{clean}"
+                    else:
+                        url = f"/{clean}"
                 request = self.context.get('request')
-                if request and not url.startswith(('http://', 'https://')):
+                if request:
                     return request.build_absolute_uri(url)
                 return url
-            except Exception:
-                val = str(img)
-                if val:
-                    if val.startswith(('http://', 'https://', '/images/')):
-                        return val
-                    request = self.context.get('request')
-                    if request:
-                        return request.build_absolute_uri(f"/media/{val.lstrip('/')}")
-                    return f"/media/{val.lstrip('/')}"
         return "/images/figure-samurai-red.svg"
 
     def create(self, validated_data):
