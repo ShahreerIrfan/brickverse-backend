@@ -132,3 +132,56 @@ class ProductGalleryImageDeleteView(generics.DestroyAPIView):
     lookup_field = 'id'
 
 
+class SeedCatalogAPIView(generics.GenericAPIView):
+    def get(self, request, *args, **kwargs):
+        return self.post(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        import os
+        import json
+        from django.conf import settings
+        from rest_framework.views import APIView
+
+        # 1. Delete all existing products first
+        deleted_count, _ = Product.objects.all().delete()
+
+        # 2. Load fixture
+        fixture_path = os.path.join(settings.BASE_DIR, "products_data.json")
+        if not os.path.exists(fixture_path):
+            return Response({"error": "products_data.json not found on server"}, status=status.HTTP_404_NOT_FOUND)
+
+        with open(fixture_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        prod_count = 0
+        cat_count = 0
+        section_count = 0
+
+        for item in data:
+            model = item.get("model")
+            pk = item.get("pk")
+            fields = dict(item.get("fields", {}))
+
+            if model == "products.productsection":
+                ProductSection.objects.update_or_create(id=pk, defaults=fields)
+                section_count += 1
+            elif model == "products.category":
+                Category.objects.update_or_create(id=pk, defaults=fields)
+                cat_count += 1
+            elif model == "products.product":
+                sec_id = fields.pop("section", None)
+                sec_obj = None
+                if sec_id:
+                    sec_obj = ProductSection.objects.filter(id=sec_id).first()
+                fields["section"] = sec_obj
+                Product.objects.update_or_create(id=pk, defaults=fields)
+                prod_count += 1
+
+        return Response({
+            "success": True,
+            "deleted_previous_count": deleted_count,
+            "seeded_product_count": prod_count,
+            "message": f"Successfully deleted old products and seeded {prod_count} new products with SVG images!"
+        })
+
+

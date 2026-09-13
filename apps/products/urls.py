@@ -10,10 +10,12 @@ from .views import (
     ProductReviewCreateView,
     ProductBulkDeleteView,
     ProductGalleryImageDeleteView,
+    SeedCatalogAPIView,
 )
 
 urlpatterns = [
     path('', ProductListView.as_view(), name='product-list'),
+    path('seed-catalog/', SeedCatalogAPIView.as_view(), name='product-seed-catalog'),
     path('bulk-delete/', ProductBulkDeleteView.as_view(), name='product-bulk-delete'),
     path('gallery/<int:id>/', ProductGalleryImageDeleteView.as_view(), name='product-gallery-delete'),
     path('categories/', CategoryListView.as_view(), name='category-list'),
