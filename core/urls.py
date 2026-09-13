@@ -28,6 +28,7 @@ class APIRootView(APIView):
                 "marketing_store": "/api/marketing/store-info/",
                 "newsletter": "/api/newsletter/subscribe/",
                 "partner_stores": "/api/stores/",
+                "logs": "/api/logs/",
             }
         })
 
@@ -42,6 +43,7 @@ urlpatterns = [
     path('api/orders/', include('apps.orders.urls')),
     path('api/marketing/', include('apps.marketing.urls')),
     path('api/stores/', include('apps.stores.urls')),
+    path('api/logs/', include('apps.logs.urls')),
 
     # Direct top-level aliases
     path('api/categories/', CategoryListView.as_view(), name='top-categories'),

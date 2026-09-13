@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'apps.orders',
     'apps.marketing',
     'apps.stores',
+    'apps.logs',
     'apps',
 ]
 
@@ -67,6 +68,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'apps.logs.middleware.RequestLoggingMiddleware',
 ]
 
 # CORS and CSRF Configuration
@@ -139,13 +141,33 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 if DATABASE_URL:
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-            conn_health_checks=True,
-        )
-    }
+    import urllib.parse
+    import socket
+    parsed = urllib.parse.urlparse(DATABASE_URL)
+    db_host = parsed.hostname
+    is_resolvable = True
+    if db_host and db_host not in ('localhost', '127.0.0.1'):
+        try:
+            socket.gethostbyname(db_host)
+        except Exception:
+            is_resolvable = False
+
+    if is_resolvable:
+        DATABASES = {
+            'default': dj_database_url.config(
+                default=DATABASE_URL,
+                conn_max_age=600,
+                conn_health_checks=True,
+            )
+        }
+    else:
+        # Fallback to SQLite for local development when production container hostname cannot be resolved
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
 else:
     DATABASES = {
         'default': {
