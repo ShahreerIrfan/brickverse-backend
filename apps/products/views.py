@@ -138,14 +138,26 @@ class SeedCatalogAPIView(generics.GenericAPIView):
 
     def post(self, request, *args, **kwargs):
         import os
+        import shutil
         import json
         from django.conf import settings
-        from rest_framework.views import APIView
 
-        # 1. Delete all existing products first
+        # 1. Sync assets to media/products
+        media_products_dir = os.path.join(settings.MEDIA_ROOT, "products")
+        os.makedirs(media_products_dir, exist_ok=True)
+        
+        assets_dir = os.path.join(settings.BASE_DIR, "catalog_seed_assets")
+        if os.path.exists(assets_dir):
+            for fname in os.listdir(assets_dir):
+                if fname.endswith(".svg"):
+                    src = os.path.join(assets_dir, fname)
+                    dst = os.path.join(media_products_dir, fname)
+                    shutil.copy2(src, dst)
+
+        # 2. Delete all existing products first
         deleted_count, _ = Product.objects.all().delete()
 
-        # 2. Load fixture
+        # 3. Load fixture
         fixture_path = os.path.join(settings.BASE_DIR, "products_data.json")
         if not os.path.exists(fixture_path):
             return Response({"error": "products_data.json not found on server"}, status=status.HTTP_404_NOT_FOUND)
@@ -174,6 +186,12 @@ class SeedCatalogAPIView(generics.GenericAPIView):
                 if sec_id:
                     sec_obj = ProductSection.objects.filter(id=sec_id).first()
                 fields["section"] = sec_obj
+
+                raw_img = fields.pop("image", "")
+                img_filename = os.path.basename(raw_img) if raw_img else "figure-samurai-red.svg"
+                fields["image"] = f"products/{img_filename}"
+                fields["image_file"] = f"products/{img_filename}"
+
                 Product.objects.update_or_create(id=pk, defaults=fields)
                 prod_count += 1
 
