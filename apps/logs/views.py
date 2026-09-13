@@ -27,7 +27,7 @@ class SystemLogListView(APIView):
         avg_duration = 0.0
 
         try:
-            queryset = SystemLog.objects.all()
+            queryset = SystemLog.objects.exclude(Q(path__startswith='/api/logs') & (Q(status_code__isnull=True) | Q(status_code__lt=400)))
 
             # Global counts for KPI counters
             total_count = queryset.count()

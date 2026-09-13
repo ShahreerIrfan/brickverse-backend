@@ -20,7 +20,10 @@ def add_to_buffer(entry: dict):
 
 
 def get_buffer_logs(limit=100, level=None, search=None, status_code=None):
-    results = list(LOG_BUFFER)
+    results = [
+        l for l in list(LOG_BUFFER)
+        if not (str(l.get('path', '')).startswith('/api/logs/') and (l.get('status_code') or 200) < 400)
+    ]
     
     if level and level.lower() != 'all':
         results = [l for l in results if str(l.get('level', '')).upper() == level.upper()]

@@ -45,8 +45,8 @@ class RequestLoggingMiddleware:
     def record_log(self, request, response=None, duration_ms=0, exception=None, traceback_text=None, status_code=None):
         try:
             path = request.path
-            # Skip noise like favicon or pure static if status is 200
-            if path in ('/favicon.ico', '/robots.txt') and (response and response.status_code < 400):
+            # Skip noise like favicon, static files, and self-polling on /api/logs/
+            if (path in ('/favicon.ico', '/robots.txt') or path.startswith('/api/logs/')) and (not response or response.status_code < 400):
                 return
 
             status = status_code or (response.status_code if response else 500)
