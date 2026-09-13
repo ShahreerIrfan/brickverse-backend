@@ -118,9 +118,13 @@ class UserDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_update(self, serializer):
         role = self.request.data.get('role')
+        password = self.request.data.get('password')
         user = serializer.save()
         if role:
             user.role = role
             user.is_staff = (role == User.ROLE_ADMIN)
+            user.save(update_fields=['role', 'is_staff'])
+        if password and str(password).strip():
+            user.set_password(str(password).strip())
             user.save()
 

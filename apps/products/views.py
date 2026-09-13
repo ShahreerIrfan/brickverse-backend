@@ -88,13 +88,13 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         lookup = self.kwargs.get('id')
-        try:
-            return Product.objects.select_related('subcategory').get(
-                Q(id=lookup) | Q(slug=lookup) | Q(sku=lookup)
-            )
-        except Product.DoesNotExist:
+        obj = Product.objects.select_related('subcategory').filter(
+            Q(id=lookup) | Q(slug=lookup) | Q(sku=lookup)
+        ).first()
+        if not obj:
             from django.http import Http404
             raise Http404("Product not found")
+        return obj
 
 
 class ProductReviewCreateView(generics.CreateAPIView):

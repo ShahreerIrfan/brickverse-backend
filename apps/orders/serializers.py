@@ -54,9 +54,29 @@ class WishlistItemSerializer(serializers.ModelSerializer):
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+    sku = serializers.SerializerMethodField()
+    productId = serializers.SerializerMethodField()
+
     class Meta:
         model = OrderItem
-        fields = ['id', 'product_name', 'price', 'quantity']
+        fields = ['id', 'product', 'productId', 'product_name', 'price', 'quantity', 'image', 'sku']
+
+    def get_productId(self, obj):
+        return obj.product_id if obj.product_id else ""
+
+    def get_image(self, obj):
+        if obj.product:
+            img = obj.product.image or getattr(obj.product, 'image_file', None)
+            if img:
+                try:
+                    return img.url
+                except Exception:
+                    return str(img)
+        return "/images/figure-samurai-red.svg"
+
+    def get_sku(self, obj):
+        return obj.product.sku if obj.product else ""
 
 
 class OrderSerializer(serializers.ModelSerializer):

@@ -63,7 +63,8 @@ class PartnerStore(models.Model):
         from django.utils import timezone
         last_payment = self.payments.order_by('-payment_date').first()
         if not last_payment:
-            return 'overdue' if due > 0 else 'up_to_date'
+            days_since_created = (timezone.now().date() - self.created_at.date()).days
+            return 'overdue' if days_since_created > 30 else 'due_this_month'
         days_since = (timezone.now().date() - last_payment.payment_date).days
         return 'overdue' if days_since > 30 else 'due_this_month'
 

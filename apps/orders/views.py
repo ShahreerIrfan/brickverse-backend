@@ -136,13 +136,32 @@ class OrderListView(APIView):
         )
 
         items_data = data.get('items', [])
+        from apps.products.models import Product
+
         for item in items_data:
+            prod_id = item.get('productId') or item.get('id') or item.get('product_id')
+            prod = Product.objects.filter(id=prod_id).first() if prod_id else None
+            
+            raw_price = item.get('price', 0)
+            try:
+                price_val = float(str(raw_price).replace('৳', '').replace('$', '').replace(',', '').strip() or 0)
+            except Exception:
+                price_val = 0.0
+
+            qty = int(item.get('quantity', 1))
+
             OrderItem.objects.create(
                 order=order,
-                product_name=item.get('name', 'Product Item'),
-                price=float(item.get('price', 0)),
-                quantity=int(item.get('quantity', 1))
+                product=prod,
+                product_name=item.get('name', prod.name if prod else 'Product Item'),
+                price=price_val,
+                quantity=qty
             )
+
+            # Deduct inventory stock if product exists
+            if prod and prod.stock is not None:
+                prod.stock = max(0, prod.stock - qty)
+                prod.save(update_fields=['stock'])
 
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
@@ -242,15 +261,18 @@ class AdminDashboardStatsView(APIView):
                 if not prod:
                     prod = Product.objects.filter(name__iexact=item['product_name']).first()
 
-                cat_name = prod.category.name if prod and prod.category else "Collectibles"
-                img_url = ""
-                if prod and prod.image:
-                    img_url = prod.image.url
-                elif prod and hasattr(prod, 'original_image') and prod.original_image:
-                    img_url = prod.original_image
+                cat_name = "Collectibles"
+                if prod and prod.category:
+                    cat_name = prod.category if isinstance(prod.category, str) else getattr(prod.category, 'name', 'Collectibles')
 
-                if not img_url:
-                    img_url = "/images/figure-samurai-red.svg"
+                img_url = "/images/figure-samurai-red.svg"
+                if prod:
+                    img_file = prod.image or getattr(prod, 'image_file', None)
+                    if img_file:
+                        try:
+                            img_url = img_file.url
+                        except Exception:
+                            img_url = str(img_file)
 
                 sold_qty = int(item['total_sold'])
                 rev_val = float(item['total_revenue'])
@@ -276,8 +298,15 @@ class AdminDashboardStatsView(APIView):
             bg_colors = ["#FFEAF0", "#E4F7F8", "#FFF4DA", "#EFE9FF"]
 
             for idx, p in enumerate(catalog_products):
-                cat_name = p.category.name if p.category else "Anime figures"
-                img_url = p.image.url if p.image else "/images/figure-samurai-red.svg"
+                cat_name = p.category if isinstance(p.category, str) else getattr(p.category, 'name', 'Anime figures')
+                img_url = "/images/figure-samurai-red.svg"
+                img_file = p.image or getattr(p, 'image_file', None)
+                if img_file:
+                    try:
+                        img_url = img_file.url
+                    except Exception:
+                        img_url = str(img_file)
+
                 try:
                     price_cleaned = float(str(p.price).replace('৳', '').replace('$', '').replace(',', '').strip() or 49.99)
                 except Exception:
