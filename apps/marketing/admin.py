@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, FooterLink, ContactMessage
+from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, FooterLink, ContactMessage, HeroSlide
 
 @admin.register(NewsletterSubscriber)
 class NewsletterSubscriberAdmin(admin.ModelAdmin):
@@ -29,6 +29,13 @@ class FooterColumnAdmin(admin.ModelAdmin):
     list_display = ('title', 'order')
     list_editable = ('order',)
     inlines = [FooterLinkInline]
+
+
+@admin.register(HeroSlide)
+class HeroSlideAdmin(admin.ModelAdmin):
+    list_display = ('title', 'order', 'is_active')
+    list_editable = ('order', 'is_active')
+    search_fields = ('title', 'subtitle')
 
 
 @admin.register(ContactMessage)

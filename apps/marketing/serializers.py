@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, FooterLink, ContactMessage
+from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, FooterLink, ContactMessage, HeroSlide
 
 class NewsletterSubscriberSerializer(serializers.ModelSerializer):
     class Meta:
@@ -61,6 +61,54 @@ class FooterColumnSerializer(serializers.ModelSerializer):
 
     def get_links(self, obj):
         return [link.label for link in obj.links.all().order_by('order')]
+
+
+class HeroSlideSerializer(serializers.ModelSerializer):
+    buttonText = serializers.CharField(source='button_text', required=False, allow_blank=True)
+    buttonLink = serializers.CharField(source='button_link', required=False, allow_blank=True)
+    image = serializers.SerializerMethodField()
+    image_file = serializers.FileField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = HeroSlide
+        fields = [
+            'id',
+            'title',
+            'subtitle',
+            'button_text',
+            'buttonText',
+            'button_link',
+            'buttonLink',
+            'image',
+            'image_file',
+            'order',
+            'is_active',
+        ]
+
+    def get_image(self, obj):
+        img = obj.image
+        if not img:
+            return None
+        try:
+            url = img.url
+        except Exception:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+    def create(self, validated_data):
+        image_file = validated_data.pop('image_file', None)
+        if image_file:
+            validated_data['image'] = image_file
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        image_file = validated_data.pop('image_file', None)
+        if image_file:
+            validated_data['image'] = image_file
+        return super().update(instance, validated_data)
 
 
 class ContactMessageSerializer(serializers.ModelSerializer):

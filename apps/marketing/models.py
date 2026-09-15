@@ -63,6 +63,23 @@ class FooterLink(models.Model):
         return f"{self.column.title} - {self.label}"
 
 
+class HeroSlide(models.Model):
+    title = models.CharField(max_length=200)
+    subtitle = models.CharField(max_length=300, blank=True)
+    button_text = models.CharField(max_length=50, blank=True, default="Shop now")
+    button_link = models.CharField(max_length=300, blank=True, default="#")
+    image = models.FileField(upload_to='hero_slides/', blank=True, null=True)
+    order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.title
+
+
 class ContactMessage(models.Model):
     name = models.CharField(max_length=150)
     email = models.EmailField()

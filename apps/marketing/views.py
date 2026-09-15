@@ -1,13 +1,15 @@
 from rest_framework import generics, status
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, ContactMessage
+from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, ContactMessage, HeroSlide
 from .serializers import (
     NewsletterSubscriberSerializer,
     NavLinkSerializer,
     StoreInfoSerializer,
     FooterColumnSerializer,
     ContactMessageSerializer,
+    HeroSlideSerializer,
 )
 
 class NewsletterSubscribeView(APIView):
@@ -57,3 +59,25 @@ class FooterColumnListView(generics.ListAPIView):
 class ContactMessageCreateView(generics.CreateAPIView):
     queryset = ContactMessage.objects.all()
     serializer_class = ContactMessageSerializer
+
+
+class HeroSlideListView(generics.ListAPIView):
+    """Public: active slides only, in display order - what the homepage
+    hero carousel renders."""
+    queryset = HeroSlide.objects.filter(is_active=True).order_by('order', 'id')
+    serializer_class = HeroSlideSerializer
+    pagination_class = None
+
+
+class HeroSlideAdminListView(generics.ListCreateAPIView):
+    """Admin: every slide, active or not, for the Hero Slide manager."""
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    queryset = HeroSlide.objects.all().order_by('order', 'id')
+    serializer_class = HeroSlideSerializer
+    pagination_class = None
+
+
+class HeroSlideDetailView(generics.RetrieveUpdateDestroyAPIView):
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    queryset = HeroSlide.objects.all()
+    serializer_class = HeroSlideSerializer

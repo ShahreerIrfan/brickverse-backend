@@ -5,6 +5,9 @@ from .views import (
     StoreInfoView,
     FooterColumnListView,
     ContactMessageCreateView,
+    HeroSlideListView,
+    HeroSlideAdminListView,
+    HeroSlideDetailView,
 )
 
 urlpatterns = [
@@ -13,4 +16,7 @@ urlpatterns = [
     path('store-info/', StoreInfoView.as_view(), name='store-info'),
     path('footer/', FooterColumnListView.as_view(), name='footer-columns'),
     path('contact/', ContactMessageCreateView.as_view(), name='contact-create'),
+    path('hero-slides/', HeroSlideListView.as_view(), name='hero-slides'),
+    path('hero-slides/all/', HeroSlideAdminListView.as_view(), name='hero-slides-admin'),
+    path('hero-slides/<int:pk>/', HeroSlideDetailView.as_view(), name='hero-slide-detail'),
 ]
