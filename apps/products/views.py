@@ -74,6 +74,22 @@ class ProductSectionListView(generics.ListAPIView):
     pagination_class = None
 
 
+def _category_subtree_ids(root_id):
+    """A category's own id plus every descendant's id, so filtering by a
+    parent (e.g. "Mobile") also catches products filed under any of its
+    children/grandchildren (e.g. "AMOLED Display Mobile")."""
+    ids = {root_id}
+    frontier = [root_id]
+    while frontier:
+        children = list(Category.objects.filter(parent_id__in=frontier).values_list('id', flat=True))
+        new_ids = [c for c in children if c not in ids]
+        if not new_ids:
+            break
+        ids.update(new_ids)
+        frontier = new_ids
+    return ids
+
+
 class ProductListView(generics.ListCreateAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = ProductSerializer
@@ -88,9 +104,19 @@ class ProductListView(generics.ListCreateAPIView):
         badge = self.request.query_params.get('badge')
 
         if category:
-            queryset = queryset.filter(Q(category__icontains=category) | Q(id__icontains=category))
+            match = Category.objects.filter(Q(id=category) | Q(slug=category) | Q(label__iexact=category)).first()
+            if match:
+                subtree_ids = _category_subtree_ids(match.id)
+                queryset = queryset.filter(Q(category__iexact=match.id) | Q(subcategory_id__in=subtree_ids))
+            else:
+                queryset = queryset.filter(Q(category__icontains=category) | Q(id__icontains=category))
         if subcategory:
-            queryset = queryset.filter(Q(subcategory_id=subcategory) | Q(subcategory__slug=subcategory) | Q(subcategory__label__icontains=subcategory))
+            match = Category.objects.filter(Q(id=subcategory) | Q(slug=subcategory) | Q(label__iexact=subcategory)).first()
+            if match:
+                subtree_ids = _category_subtree_ids(match.id)
+                queryset = queryset.filter(subcategory_id__in=subtree_ids)
+            else:
+                queryset = queryset.filter(Q(subcategory_id=subcategory) | Q(subcategory__slug=subcategory) | Q(subcategory__label__icontains=subcategory))
         if section:
             queryset = queryset.filter(section_id=section)
         if badge:
