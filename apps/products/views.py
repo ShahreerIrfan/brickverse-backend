@@ -1,6 +1,7 @@
 from rest_framework import generics, filters, status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.db.models import Q
 from .models import Category, SubCategory, ProductSection, Product, ProductReview, ProductGalleryImage
 from .serializers import (
@@ -24,6 +25,32 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     lookup_field = 'id'
+
+
+class MegaMenuReorderView(APIView):
+    """Set which categories show in the homepage hero mega menu and their order.
+
+    Accepts {"ids": ["cat-1", "cat-2", ...]} - the full ordered list of
+    category ids that should appear in the mega menu. Any category not in
+    the list is turned off; categories in the list get show_in_mega_menu=True
+    and mega_menu_order set to their position.
+    """
+
+    def post(self, request):
+        ids = request.data.get('ids', [])
+        if not isinstance(ids, list):
+            return Response({"error": "ids must be a list of category ids"}, status=status.HTTP_400_BAD_REQUEST)
+
+        valid_ids = list(
+            Category.objects.filter(id__in=ids).values_list('id', flat=True)
+        )
+        ordered_ids = [cid for cid in ids if cid in valid_ids]
+
+        Category.objects.exclude(id__in=ordered_ids).update(show_in_mega_menu=False)
+        for index, cat_id in enumerate(ordered_ids):
+            Category.objects.filter(id=cat_id).update(show_in_mega_menu=True, mega_menu_order=index)
+
+        return Response({"success": True, "count": len(ordered_ids)})
 
 
 class SubCategoryListView(generics.ListCreateAPIView):

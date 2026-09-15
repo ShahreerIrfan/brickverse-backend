@@ -35,6 +35,8 @@ class CategorySerializer(serializers.ModelSerializer):
             'category_icon_file',
             'featured',
             'order',
+            'show_in_mega_menu',
+            'mega_menu_order',
             'subcategories',
             'productCount',
         ]

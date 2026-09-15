@@ -12,6 +12,8 @@ class Category(models.Model):
     category_icon_file = models.FileField(upload_to='categories/icons/', blank=True, null=True)
     featured = models.BooleanField(default=False)
     order = models.IntegerField(default=0)
+    show_in_mega_menu = models.BooleanField(default=True, help_text="Show this category in the homepage hero mega menu")
+    mega_menu_order = models.IntegerField(default=0, help_text="Display order within the homepage mega menu")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

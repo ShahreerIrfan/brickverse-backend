@@ -8,8 +8,8 @@ class SubCategoryInline(admin.TabularInline):
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'label', 'color', 'icon_type', 'featured', 'order')
-    list_editable = ('featured', 'order')
+    list_display = ('id', 'label', 'color', 'icon_type', 'featured', 'order', 'show_in_mega_menu', 'mega_menu_order')
+    list_editable = ('featured', 'order', 'show_in_mega_menu', 'mega_menu_order')
     search_fields = ('label', 'id')
     inlines = [SubCategoryInline]
 

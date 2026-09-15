@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     CategoryListView,
     CategoryDetailView,
+    MegaMenuReorderView,
     SubCategoryListView,
     SubCategoryDetailView,
     ProductSectionListView,
@@ -18,6 +19,7 @@ urlpatterns = [
     path('seed-catalog/', SeedCatalogAPIView.as_view(), name='product-seed-catalog'),
     path('bulk-delete/', ProductBulkDeleteView.as_view(), name='product-bulk-delete'),
     path('gallery/<int:id>/', ProductGalleryImageDeleteView.as_view(), name='product-gallery-delete'),
+    path('categories/mega-menu/reorder/', MegaMenuReorderView.as_view(), name='category-mega-menu-reorder'),
     path('categories/', CategoryListView.as_view(), name='category-list'),
     path('categories/<str:id>/', CategoryDetailView.as_view(), name='category-detail'),
     path('subcategories/', SubCategoryListView.as_view(), name='subcategory-list'),
