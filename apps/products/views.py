@@ -3,10 +3,9 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Q
-from .models import Category, SubCategory, ProductSection, Product, ProductReview, ProductGalleryImage
+from .models import Category, ProductSection, Product, ProductReview, ProductGalleryImage
 from .serializers import (
     CategorySerializer,
-    SubCategorySerializer,
     ProductSectionSerializer,
     ProductSerializer,
     ProductReviewSerializer,
@@ -14,8 +13,11 @@ from .serializers import (
 )
 
 class CategoryListView(generics.ListCreateAPIView):
+    """Public: top-level categories only (what the storefront's mega menu
+    and category rail show), each with its direct children nested one
+    level deep as `subcategories`."""
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    queryset = Category.objects.prefetch_related('subcategories').all().order_by('order', 'label')
+    queryset = Category.objects.filter(parent__isnull=True).prefetch_related('children').order_by('order', 'label')
     serializer_class = CategorySerializer
     pagination_class = None
 
@@ -25,6 +27,19 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     lookup_field = 'id'
+
+    def perform_destroy(self, instance):
+        # Children keep existing (parent becomes null, via on_delete=SET_NULL)
+        # rather than being silently deleted along with their parent.
+        instance.delete()
+
+
+class CategoryTreeListView(generics.ListAPIView):
+    """Admin: every category at every depth, flat, for building the full
+    tree (indentation + parent picker) client-side via each row's `parent`."""
+    queryset = Category.objects.all().order_by('order', 'label')
+    serializer_class = CategorySerializer
+    pagination_class = None
 
 
 class MegaMenuReorderView(APIView):
@@ -51,24 +66,6 @@ class MegaMenuReorderView(APIView):
             Category.objects.filter(id=cat_id).update(show_in_mega_menu=True, mega_menu_order=index)
 
         return Response({"success": True, "count": len(ordered_ids)})
-
-
-class SubCategoryListView(generics.ListCreateAPIView):
-    serializer_class = SubCategorySerializer
-    pagination_class = None
-
-    def get_queryset(self):
-        queryset = SubCategory.objects.all().order_by('order', 'label')
-        category_id = self.request.query_params.get('category')
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
-        return queryset
-
-
-class SubCategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = SubCategory.objects.all()
-    serializer_class = SubCategorySerializer
-    lookup_field = 'id'
 
 
 class ProductSectionListView(generics.ListAPIView):

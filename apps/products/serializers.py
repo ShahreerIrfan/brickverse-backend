@@ -1,33 +1,33 @@
 from rest_framework import serializers
-from .models import Category, SubCategory, ProductSection, Product, ProductReview, ProductGalleryImage
+from .models import Category, ProductSection, Product, ProductReview, ProductGalleryImage
 
-class SubCategorySerializer(serializers.ModelSerializer):
-    categoryId = serializers.CharField(source='category_id', required=False)
+
+class CategoryChildSerializer(serializers.ModelSerializer):
+    """One level of a category's direct children - used both for the
+    storefront's `subcategories` list and for a product's `subcategory`.
+    Kept intentionally slim (no further nesting) to match how the
+    storefront has always consumed this."""
 
     class Meta:
-        model = SubCategory
-        fields = ['id', 'categoryId', 'category', 'label', 'slug', 'description', 'image', 'order', 'is_active']
-        extra_kwargs = {
-            'category': {'required': False},
-        }
-
-    def create(self, validated_data):
-        category_id = validated_data.pop('category_id', None) or (validated_data.get('category').id if validated_data.get('category') else None)
-        if category_id and not validated_data.get('category'):
-            validated_data['category'] = Category.objects.get(id=category_id)
-        return super().create(validated_data)
+        model = Category
+        fields = ['id', 'label', 'slug', 'order', 'is_active']
 
 
 class CategorySerializer(serializers.ModelSerializer):
-    subcategories = SubCategorySerializer(many=True, read_only=True)
+    subcategories = CategoryChildSerializer(source='children', many=True, read_only=True)
+    childrenCount = serializers.SerializerMethodField(read_only=True)
     productCount = serializers.SerializerMethodField(read_only=True)
     categoryIcon = serializers.CharField(source='category_icon', required=False, allow_blank=True)
+    parentLabel = serializers.CharField(source='parent.label', read_only=True, default=None)
 
     class Meta:
         model = Category
         fields = [
             'id',
             'label',
+            'slug',
+            'parent',
+            'parentLabel',
             'color',
             'icon_type',
             'category_icon',
@@ -35,19 +35,36 @@ class CategorySerializer(serializers.ModelSerializer):
             'category_icon_file',
             'featured',
             'order',
+            'is_active',
             'show_in_mega_menu',
             'mega_menu_order',
             'subcategories',
+            'childrenCount',
             'productCount',
         ]
         extra_kwargs = {
             'category_icon': {'required': False, 'allow_blank': True},
             'category_icon_file': {'required': False, 'allow_null': True},
+            'parent': {'required': False, 'allow_null': True},
         }
+
+    def get_childrenCount(self, obj):
+        return obj.children.count()
 
     def get_productCount(self, obj):
         from .models import Product
         return Product.objects.filter(category__icontains=obj.id).count()
+
+    def validate_parent(self, value):
+        if value and self.instance and value.id == self.instance.id:
+            raise serializers.ValidationError("A category can't be its own parent.")
+        if value and self.instance:
+            node = value
+            while node is not None:
+                if node.id == self.instance.id:
+                    raise serializers.ValidationError("A category can't be nested under one of its own children.")
+                node = node.parent
+        return value
 
     def create(self, validated_data):
         icon_file = validated_data.get('category_icon_file')
@@ -97,7 +114,7 @@ class ProductSerializer(serializers.ModelSerializer):
     discountedPrice = serializers.CharField(source='discounted_price', required=False, allow_blank=True)
     tradePrice = serializers.CharField(source='trade_price', required=False, allow_blank=True)
     discountPercent = serializers.IntegerField(source='discount_percent', required=False)
-    subcategory = SubCategorySerializer(read_only=True)
+    subcategory = CategoryChildSerializer(read_only=True)
     subcategoryId = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
     reviews_list = ProductReviewSerializer(many=True, read_only=True)
     gallery_images = ProductGalleryImageSerializer(many=True, read_only=True)
@@ -168,8 +185,8 @@ class ProductSerializer(serializers.ModelSerializer):
         subcat_id = validated_data.pop('subcategoryId', None)
         if subcat_id:
             try:
-                validated_data['subcategory'] = SubCategory.objects.get(id=subcat_id)
-            except SubCategory.DoesNotExist:
+                validated_data['subcategory'] = Category.objects.get(id=subcat_id)
+            except Category.DoesNotExist:
                 pass
         
         if not validated_data.get('section') and not validated_data.get('section_id'):
@@ -210,8 +227,8 @@ class ProductSerializer(serializers.ModelSerializer):
                 instance.subcategory = None
             else:
                 try:
-                    instance.subcategory = SubCategory.objects.get(id=subcat_id)
-                except SubCategory.DoesNotExist:
+                    instance.subcategory = Category.objects.get(id=subcat_id)
+                except Category.DoesNotExist:
                     pass
 
         request = self.context.get('request')

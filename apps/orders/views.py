@@ -176,7 +176,7 @@ class AdminDashboardStatsView(APIView):
     def get(self, request):
         from datetime import timedelta
         from django.utils import timezone
-        from apps.products.models import Product, Category, SubCategory, ProductReview
+        from apps.products.models import Product, Category, ProductReview
         from apps.users.models import CustomerUser, User
         from django.db.models import Sum, Avg, Count, F, ExpressionWrapper, DecimalField
 
@@ -185,8 +185,8 @@ class AdminDashboardStatsView(APIView):
         total_customers = CustomerUser.objects.count()
         total_users = User.objects.count()
         total_products = Product.objects.count()
-        total_categories = Category.objects.count()
-        total_subcategories = SubCategory.objects.count()
+        total_categories = Category.objects.filter(parent__isnull=True).count()
+        total_subcategories = Category.objects.filter(parent__isnull=False).count()
         avg_rating = ProductReview.objects.aggregate(avg=Avg('rating'))['avg'] or 4.8
 
         # Order status distribution

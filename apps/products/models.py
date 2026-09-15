@@ -4,14 +4,26 @@ from django.utils.text import slugify
 
 
 class Category(models.Model):
-    id = models.CharField(max_length=50, primary_key=True)
-    label = models.CharField(max_length=100)
+    """A single, self-referential category tree. A category with no parent
+    is a top-level category (what the storefront's mega menu and category
+    rail show); any category can itself have children, to any depth, via
+    the parent field - this replaced the old fixed two-level
+    Category/SubCategory split so the admin can nest categories as deep as
+    they need (Parent > Subcategory > Sub-subcategory > ...)."""
+
+    id = models.CharField(max_length=100, primary_key=True)
+    parent = models.ForeignKey(
+        'self', null=True, blank=True, related_name='children', on_delete=models.SET_NULL
+    )
+    label = models.CharField(max_length=150)
+    slug = models.CharField(max_length=150, blank=True)
     color = models.CharField(max_length=20, default="#FF4D6D")
     icon_type = models.CharField(max_length=50, blank=True, help_text="e.g. figure, toon, brick, code")
     category_icon = models.CharField(max_length=500, blank=True, default="", help_text="Category icon name, SVG path, or image URL")
     category_icon_file = models.FileField(upload_to='categories/icons/', blank=True, null=True)
     featured = models.BooleanField(default=False)
     order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
     show_in_mega_menu = models.BooleanField(default=True, help_text="Show this category in the homepage hero mega menu")
     mega_menu_order = models.IntegerField(default=0, help_text="Display order within the homepage mega menu")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -20,27 +32,13 @@ class Category(models.Model):
         ordering = ['order', 'label']
         verbose_name_plural = 'Categories'
 
-    def __str__(self):
-        return self.label
-
-
-class SubCategory(models.Model):
-    id = models.CharField(max_length=100, primary_key=True)
-    category = models.ForeignKey(Category, related_name='subcategories', on_delete=models.CASCADE)
-    label = models.CharField(max_length=150)
-    slug = models.CharField(max_length=150, blank=True)
-    description = models.TextField(blank=True)
-    image = models.CharField(max_length=255, blank=True)
-    order = models.IntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['order', 'label']
-        verbose_name_plural = 'Subcategories'
+    def save(self, *args, **kwargs):
+        if not self.slug and self.label:
+            self.slug = slugify(self.label)
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.category.label} > {self.label}"
+        return f"{self.parent.label} > {self.label}" if self.parent_id else self.label
 
 
 class ProductSection(models.Model):
@@ -67,7 +65,7 @@ class Product(models.Model):
     section = models.ForeignKey(ProductSection, related_name='products', on_delete=models.SET_NULL, null=True, blank=True)
     category = models.CharField(max_length=100)
     category_color = models.CharField(max_length=20, default="#FF4D6D")
-    subcategory = models.ForeignKey(SubCategory, related_name='products', on_delete=models.SET_NULL, null=True, blank=True)
+    subcategory = models.ForeignKey(Category, related_name='products', on_delete=models.SET_NULL, null=True, blank=True)
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True)
     image = models.FileField(upload_to='products/', blank=True, null=True)

@@ -1,25 +1,13 @@
 from django.contrib import admin
-from .models import Category, SubCategory, ProductSection, Product, ProductReview
-
-class SubCategoryInline(admin.TabularInline):
-    model = SubCategory
-    extra = 1
+from .models import Category, ProductSection, Product, ProductReview
 
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'label', 'color', 'icon_type', 'featured', 'order', 'show_in_mega_menu', 'mega_menu_order')
-    list_editable = ('featured', 'order', 'show_in_mega_menu', 'mega_menu_order')
-    search_fields = ('label', 'id')
-    inlines = [SubCategoryInline]
-
-
-@admin.register(SubCategory)
-class SubCategoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'label', 'category', 'order', 'is_active')
-    list_filter = ('category', 'is_active')
-    list_editable = ('order', 'is_active')
-    search_fields = ('label', 'id', 'category__label')
+    list_display = ('id', 'label', 'parent', 'color', 'icon_type', 'featured', 'order', 'is_active', 'show_in_mega_menu', 'mega_menu_order')
+    list_editable = ('featured', 'order', 'is_active', 'show_in_mega_menu', 'mega_menu_order')
+    list_filter = ('parent', 'is_active')
+    search_fields = ('label', 'id', 'slug')
 
 
 @admin.register(ProductSection)
