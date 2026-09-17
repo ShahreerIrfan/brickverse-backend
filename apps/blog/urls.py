@@ -11,6 +11,7 @@ from .views import (
     AdminTagListView,
     AdminTagDetailView,
     BlogMediaUploadView,
+    SeedBlogSampleDataAPIView,
 )
 
 urlpatterns = [
@@ -27,4 +28,5 @@ urlpatterns = [
     path('admin/tags/<int:id>/', AdminTagDetailView.as_view(), name='blog-admin-tag-detail'),
 
     path('media/upload/', BlogMediaUploadView.as_view(), name='blog-media-upload'),
+    path('admin/seed-sample-data/', SeedBlogSampleDataAPIView.as_view(), name='blog-seed-sample-data'),
 ]
