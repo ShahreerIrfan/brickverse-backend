@@ -29,9 +29,15 @@ class BlogPostListView(generics.ListAPIView):
         search = self.request.query_params.get('search')
 
         if category:
-            queryset = queryset.filter(Q(category__slug=category) | Q(category_id=category))
+            lookup = Q(category__slug=category)
+            if category.isdigit():
+                lookup |= Q(category_id=category)
+            queryset = queryset.filter(lookup)
         if tag:
-            queryset = queryset.filter(Q(tags__slug=tag) | Q(tags__id=tag))
+            lookup = Q(tags__slug=tag)
+            if tag.isdigit():
+                lookup |= Q(tags__id=tag)
+            queryset = queryset.filter(lookup)
         if search:
             queryset = queryset.filter(Q(title__icontains=search) | Q(excerpt__icontains=search))
 
