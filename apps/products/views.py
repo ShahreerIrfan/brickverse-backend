@@ -3,7 +3,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Q
-from .models import Category, ProductSection, Product, ProductReview, ProductGalleryImage
+from .models import category_subtree_ids, Category, ProductSection, Product, ProductReview, ProductGalleryImage
 from .serializers import (
     CategorySerializer,
     ProductSectionSerializer,
@@ -68,26 +68,76 @@ class MegaMenuReorderView(APIView):
         return Response({"success": True, "count": len(ordered_ids)})
 
 
+class HomepageSectionsReorderView(APIView):
+    """Set which top-level categories appear as homepage sections and their order.
+
+    Accepts {"ids": ["cat-1", "cat-2", ...]} - the full ordered list of
+    top-level category ids to show. Anything not in the list is turned off;
+    listed categories get show_on_homepage=True and homepage_order set to
+    their position. Only top-level categories are accepted.
+    """
+
+    def post(self, request):
+        ids = request.data.get('ids', [])
+        if not isinstance(ids, list):
+            return Response({"error": "ids must be a list of category ids"}, status=status.HTTP_400_BAD_REQUEST)
+
+        valid_ids = set(Category.objects.filter(id__in=ids, parent__isnull=True).values_list('id', flat=True))
+        ordered_ids = [cid for cid in ids if cid in valid_ids]
+
+        Category.objects.exclude(id__in=ordered_ids).update(show_on_homepage=False)
+        for index, cat_id in enumerate(ordered_ids):
+            Category.objects.filter(id=cat_id).update(show_on_homepage=True, homepage_order=index)
+
+        return Response({"success": True, "count": len(ordered_ids)})
+
+
+class HomepageSectionListView(APIView):
+    """Storefront: the admin-selected top-level categories, in order, each
+    with its newest products (including products filed under any of its
+    subcategories). Categories with no active products are left out so the
+    homepage never shows an empty row."""
+
+    def get(self, request):
+        try:
+            limit = max(1, min(int(request.query_params.get('limit', 8)), 24))
+        except ValueError:
+            limit = 8
+
+        sections = []
+        categories = Category.objects.filter(
+            parent__isnull=True, is_active=True, show_on_homepage=True
+        ).order_by('homepage_order', 'label')
+        for cat in categories:
+            subtree = category_subtree_ids(cat.id)
+            qs = (
+                Product.objects.filter(Q(category__iexact=cat.id) | Q(subcategory_id__in=subtree), is_active=True)
+                .select_related('subcategory')
+                .order_by('-created_at', '-id')
+            )
+            total = qs.count()
+            if total == 0:
+                continue
+            sections.append({
+                "id": cat.id,
+                "label": cat.label,
+                "slug": cat.slug,
+                "color": cat.color,
+                "icon_type": cat.icon_type,
+                "categoryIcon": cat.category_icon,
+                "productCount": total,
+                "products": ProductSerializer(qs[:limit], many=True, context={'request': request}).data,
+            })
+        return Response(sections)
+
+
 class ProductSectionListView(generics.ListAPIView):
     queryset = ProductSection.objects.filter(is_active=True).prefetch_related('products__subcategory').order_by('order')
     serializer_class = ProductSectionSerializer
     pagination_class = None
 
 
-def _category_subtree_ids(root_id):
-    """A category's own id plus every descendant's id, so filtering by a
-    parent (e.g. "Mobile") also catches products filed under any of its
-    children/grandchildren (e.g. "AMOLED Display Mobile")."""
-    ids = {root_id}
-    frontier = [root_id]
-    while frontier:
-        children = list(Category.objects.filter(parent_id__in=frontier).values_list('id', flat=True))
-        new_ids = [c for c in children if c not in ids]
-        if not new_ids:
-            break
-        ids.update(new_ids)
-        frontier = new_ids
-    return ids
+_category_subtree_ids = category_subtree_ids
 
 
 class ProductListView(generics.ListCreateAPIView):

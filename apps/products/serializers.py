@@ -1,6 +1,7 @@
+from django.db.models import Q
 from rest_framework import serializers
 from .image_utils import normalize_image_upload
-from .models import Category, ProductSection, Product, ProductReview, ProductGalleryImage
+from .models import Category, ProductSection, Product, ProductReview, ProductGalleryImage, category_subtree_ids
 
 
 class CategoryChildSerializer(serializers.ModelSerializer):
@@ -18,6 +19,7 @@ class CategorySerializer(serializers.ModelSerializer):
     subcategories = CategoryChildSerializer(source='children', many=True, read_only=True)
     childrenCount = serializers.SerializerMethodField(read_only=True)
     productCount = serializers.SerializerMethodField(read_only=True)
+    subtreeProductCount = serializers.SerializerMethodField(read_only=True)
     categoryIcon = serializers.CharField(source='category_icon', required=False, allow_blank=True)
     parentLabel = serializers.CharField(source='parent.label', read_only=True, default=None)
 
@@ -39,9 +41,12 @@ class CategorySerializer(serializers.ModelSerializer):
             'is_active',
             'show_in_mega_menu',
             'mega_menu_order',
+            'show_on_homepage',
+            'homepage_order',
             'subcategories',
             'childrenCount',
             'productCount',
+            'subtreeProductCount',
         ]
         extra_kwargs = {
             'category_icon': {'required': False, 'allow_blank': True},
@@ -55,6 +60,11 @@ class CategorySerializer(serializers.ModelSerializer):
     def get_productCount(self, obj):
         from .models import Product
         return Product.objects.filter(category__icontains=obj.id).count()
+
+    def get_subtreeProductCount(self, obj):
+        from .models import Product
+        ids = category_subtree_ids(obj.id)
+        return Product.objects.filter(Q(category__iexact=obj.id) | Q(subcategory_id__in=ids)).count()
 
     def validate_parent(self, value):
         if value and self.instance and value.id == self.instance.id:

@@ -22,6 +22,20 @@ def product_gallery_upload_to(instance, filename):
     return _safe_upload_path("products/gallery", filename)
 
 
+def category_subtree_ids(root_id):
+    """A category's own id plus every descendant's id."""
+    ids = {root_id}
+    frontier = [root_id]
+    while frontier:
+        children = list(Category.objects.filter(parent_id__in=frontier).values_list('id', flat=True))
+        new_ids = [c for c in children if c not in ids]
+        if not new_ids:
+            break
+        ids.update(new_ids)
+        frontier = new_ids
+    return ids
+
+
 class Category(models.Model):
     """A single, self-referential category tree. A category with no parent
     is a top-level category (what the storefront's mega menu and category
@@ -45,6 +59,8 @@ class Category(models.Model):
     is_active = models.BooleanField(default=True)
     show_in_mega_menu = models.BooleanField(default=True, help_text="Show this category in the homepage hero mega menu")
     mega_menu_order = models.IntegerField(default=0, help_text="Display order within the homepage mega menu")
+    show_on_homepage = models.BooleanField(default=False, help_text="Show this top-level category as a product section on the homepage")
+    homepage_order = models.IntegerField(default=0, help_text="Display order among the homepage category sections")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
