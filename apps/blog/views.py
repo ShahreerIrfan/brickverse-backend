@@ -1,6 +1,3 @@
-from io import StringIO
-
-from django.core.management import call_command
 from django.db.models import Q
 from django.core.files.storage import default_storage
 from django.http import Http404
@@ -148,22 +145,3 @@ class BlogMediaUploadView(APIView):
         if request:
             url = request.build_absolute_uri(url)
         return Response({"url": url})
-
-
-class SeedBlogSampleDataAPIView(APIView):
-    """Runs the seed_blog management command over HTTP - mirrors
-    apps.products.views.SeedCatalogAPIView so sample data can be loaded on a
-    deployed environment with no shell access, straight from committed
-    blog_seed_assets/ images. Wipes and recreates all blog posts."""
-    permission_classes = [IsAdminRole]
-
-    def get(self, request, *args, **kwargs):
-        return self.post(request, *args, **kwargs)
-
-    def post(self, request, *args, **kwargs):
-        out = StringIO()
-        call_command('seed_blog', stdout=out)
-        return Response({
-            "message": out.getvalue().strip(),
-            "post_count": BlogPost.objects.count(),
-        })
