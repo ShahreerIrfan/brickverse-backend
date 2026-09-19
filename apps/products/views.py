@@ -96,7 +96,7 @@ class ProductListView(generics.ListCreateAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = Product.objects.all().select_related('subcategory').order_by('order')
+        queryset = Product.objects.all().select_related('subcategory').order_by('-created_at', '-id')
         category = self.request.query_params.get('category')
         subcategory = self.request.query_params.get('subcategory')
         section = self.request.query_params.get('section')

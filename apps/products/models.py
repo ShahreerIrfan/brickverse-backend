@@ -109,7 +109,7 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['order', 'name']
+        ordering = ['-created_at', '-id']
 
     def save(self, *args, **kwargs):
         if not self.slug and self.name:
