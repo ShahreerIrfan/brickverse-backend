@@ -182,6 +182,12 @@ class ProductSerializer(serializers.ModelSerializer):
                 return url
         return "/images/figure-samurai-red.svg"
 
+    @staticmethod
+    def _share_image_path(instance):
+        if instance.image and instance.image_file.name != instance.image.name:
+            Product.objects.filter(pk=instance.pk).update(image_file=instance.image.name)
+            instance.image_file.name = instance.image.name
+
     def create(self, validated_data):
         subcat_id = validated_data.pop('subcategoryId', None)
         if subcat_id:
@@ -201,10 +207,16 @@ class ProductSerializer(serializers.ModelSerializer):
             img_upload = normalize_image_upload(request.FILES.get('image') or request.FILES.get('image_file'))
 
         if img_upload:
+            # Save the upload once (to `image`) and share that stored path with
+            # `image_file` afterwards. Handing the same large upload to both
+            # FileFields made the second save fail on Linux: Django *moves* a
+            # spooled temp file into place, so the source was already gone.
             validated_data['image'] = img_upload
-            validated_data['image_file'] = img_upload
+            validated_data.pop('image_file', None)
 
         instance = super().create(validated_data)
+        if img_upload:
+            self._share_image_path(instance)
 
         # Process multi-file gallery images from request.FILES (Maximum 4 allowed)
         if request and hasattr(request, 'FILES'):
@@ -237,9 +249,11 @@ class ProductSerializer(serializers.ModelSerializer):
             img_upload = normalize_image_upload(request.FILES.get('image') or request.FILES.get('image_file'))
             if img_upload:
                 validated_data['image'] = img_upload
-                validated_data['image_file'] = img_upload
+                validated_data.pop('image_file', None)
 
         instance = super().update(instance, validated_data)
+        if request and hasattr(request, 'FILES') and (request.FILES.get('image') or request.FILES.get('image_file')):
+            self._share_image_path(instance)
 
         # Process deletion of existing gallery images if requested
         if request:
