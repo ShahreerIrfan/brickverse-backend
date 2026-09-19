@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from .image_utils import normalize_image_upload
 from .models import Category, ProductSection, Product, ProductReview, ProductGalleryImage
 
 
@@ -197,7 +198,7 @@ class ProductSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         img_upload = None
         if request and hasattr(request, 'FILES'):
-            img_upload = request.FILES.get('image') or request.FILES.get('image_file')
+            img_upload = normalize_image_upload(request.FILES.get('image') or request.FILES.get('image_file'))
 
         if img_upload:
             validated_data['image'] = img_upload
@@ -207,7 +208,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
         # Process multi-file gallery images from request.FILES (Maximum 4 allowed)
         if request and hasattr(request, 'FILES'):
-            gallery_files = request.FILES.getlist('gallery_files')[:4]
+            gallery_files = [normalize_image_upload(f) for f in request.FILES.getlist('gallery_files')[:4]]
             for idx, g_file in enumerate(gallery_files):
                 g_obj = ProductGalleryImage.objects.create(
                     product=instance,
@@ -233,7 +234,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
         request = self.context.get('request')
         if request and hasattr(request, 'FILES'):
-            img_upload = request.FILES.get('image') or request.FILES.get('image_file')
+            img_upload = normalize_image_upload(request.FILES.get('image') or request.FILES.get('image_file'))
             if img_upload:
                 validated_data['image'] = img_upload
                 validated_data['image_file'] = img_upload
@@ -269,7 +270,7 @@ class ProductSerializer(serializers.ModelSerializer):
         if request and hasattr(request, 'FILES'):
             current_count = instance.gallery_images.count()
             allowed_slots = max(0, 4 - current_count)
-            gallery_files = request.FILES.getlist('gallery_files')[:allowed_slots]
+            gallery_files = [normalize_image_upload(f) for f in request.FILES.getlist('gallery_files')[:allowed_slots]]
             if gallery_files:
                 for idx, g_file in enumerate(gallery_files):
                     g_obj = ProductGalleryImage.objects.create(
