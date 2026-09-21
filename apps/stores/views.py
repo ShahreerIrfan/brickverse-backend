@@ -65,6 +65,10 @@ class PartnerStoreListView(generics.ListCreateAPIView):
                 product = Product.objects.select_for_update().filter(id=product_id).first()
                 if not product:
                     continue
+                if product.is_grouped:
+                    raise serializers.ValidationError(
+                        {"error": f'"{product.name}" is a grouped product - give the store its individual products instead.'}
+                    )
 
                 available = product.stock if product.stock is not None else 0
                 if qty > available:
@@ -120,6 +124,11 @@ class StoreAddProductView(APIView):
             product = Product.objects.select_for_update().filter(id=request.data.get('productId')).first()
             if not product:
                 return Response({"error": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+            if product.is_grouped:
+                return Response(
+                    {"error": f'"{product.name}" is a grouped product - assign its individual products to the store instead.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             available = product.stock if product.stock is not None else 0
             if qty > available:

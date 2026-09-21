@@ -1,7 +1,9 @@
+import re
+from django.db import transaction
 from django.db.models import Q
 from rest_framework import serializers
 from .image_utils import normalize_image_upload
-from .models import Category, ProductSection, Product, ProductReview, ProductGalleryImage, category_subtree_ids
+from .models import Category, ProductSection, Product, ProductReview, ProductGalleryImage, GroupedProductItem, category_subtree_ids
 
 
 class CategoryChildSerializer(serializers.ModelSerializer):
@@ -130,6 +132,10 @@ class ProductSerializer(serializers.ModelSerializer):
     reviews_list = ProductReviewSerializer(many=True, read_only=True)
     gallery_images = ProductGalleryImageSerializer(many=True, read_only=True)
     sectionId = serializers.CharField(source='section_id', required=False, allow_null=True, allow_blank=True)
+    productType = serializers.ChoiceField(source='product_type', choices=Product.PRODUCT_TYPE_CHOICES, required=False)
+    # Write side of a grouped product's contents: [{"childId": "x", "quantity": 2}, ...].
+    # Read side (groupItems + bundleTotal) is added in to_representation.
+    groupItems = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = Product
@@ -158,6 +164,8 @@ class ProductSerializer(serializers.ModelSerializer):
             'originalPrice',
             'accent',
             'stock',
+            'productType',
+            'groupItems',
             'is_active',
             'order',
             'gallery_images',
@@ -169,6 +177,110 @@ class ProductSerializer(serializers.ModelSerializer):
             'sku': {'required': False},
             'image_file': {'required': False, 'allow_null': True},
         }
+
+    @staticmethod
+    def _price_value(text):
+        cleaned = re.sub(r'[^0-9.]', '', text or '')
+        try:
+            return float(cleaned) if cleaned else 0.0
+        except ValueError:
+            return 0.0
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.is_grouped:
+            lines, total = [], 0.0
+            for item in instance.group_items.all():
+                child = item.child
+                unit = child.discounted_price or child.price or ''
+                value = self._price_value(unit)
+                total += value * item.quantity
+                lines.append({
+                    'childId': child.id,
+                    'name': child.name,
+                    'slug': child.slug,
+                    'image': self.get_image(child),
+                    'quantity': item.quantity,
+                    'price': unit,
+                    'priceValue': value,
+                    'stock': child.stock,
+                })
+            data['groupItems'] = lines
+            data['bundleTotal'] = round(total, 2)
+            data['stock'] = instance.available_stock
+        else:
+            data['groupItems'] = []
+            data['bundleTotal'] = None
+        return data
+
+    def validate_groupItems(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Bundle contents must be a list.')
+        if len(value) > 50:
+            raise serializers.ValidationError('A bundle can contain at most 50 products.')
+        rows, seen = [], set()
+        for raw in value:
+            if not isinstance(raw, dict):
+                raise serializers.ValidationError('Each bundle line must be an object.')
+            child_id = str(raw.get('childId') or raw.get('child_id') or '').strip()
+            try:
+                qty = int(raw.get('quantity', 1))
+            except (TypeError, ValueError):
+                raise serializers.ValidationError(f'Quantity for "{child_id}" must be a whole number.')
+            if not child_id:
+                raise serializers.ValidationError('Every bundle line needs a product.')
+            if qty < 1:
+                raise serializers.ValidationError('Bundle quantities must be at least 1.')
+            if child_id in seen:
+                raise serializers.ValidationError('The same product is listed twice - change its quantity instead.')
+            seen.add(child_id)
+            rows.append((child_id, qty))
+
+        children = {p.id: p for p in Product.objects.filter(id__in=[r[0] for r in rows])}
+        result = []
+        for child_id, qty in rows:
+            child = children.get(child_id)
+            if child is None:
+                raise serializers.ValidationError(f'Product "{child_id}" does not exist.')
+            if self.instance is not None and child.id == self.instance.id:
+                raise serializers.ValidationError('A bundle cannot contain itself.')
+            if child.is_grouped:
+                raise serializers.ValidationError(
+                    f'"{child.name}" is a grouped product itself - only simple products can be added to a bundle.'
+                )
+            result.append({'child': child, 'quantity': qty})
+        return result
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        instance = self.instance
+        final_type = attrs.get('product_type') or (instance.product_type if instance else Product.TYPE_SIMPLE)
+        items = attrs.get('groupItems')
+
+        if final_type == Product.TYPE_GROUPED:
+            already_has_items = bool(instance and instance.group_items.exists())
+            if items is None and not already_has_items:
+                raise serializers.ValidationError({'groupItems': 'Add at least one product to the bundle.'})
+            if items is not None and len(items) == 0:
+                raise serializers.ValidationError({'groupItems': 'Add at least one product to the bundle.'})
+            if instance is not None and not instance.is_grouped:
+                used_in = list(instance.used_in_groups.select_related('group').values_list('group__name', flat=True))
+                if used_in:
+                    raise serializers.ValidationError({
+                        'productType': f'"{instance.name}" is already part of the bundle(s) {", ".join(used_in)}. '
+                                       'Remove it from those first.'
+                    })
+        return attrs
+
+    @staticmethod
+    def _sync_group_items(instance, items):
+        instance.group_items.all().delete()
+        GroupedProductItem.objects.bulk_create([
+            GroupedProductItem(group=instance, child=row['child'], quantity=row['quantity'], order=index)
+            for index, row in enumerate(items)
+        ])
 
     def get_image(self, obj):
         img = obj.image or getattr(obj, 'image_file', None)
@@ -198,7 +310,9 @@ class ProductSerializer(serializers.ModelSerializer):
             Product.objects.filter(pk=instance.pk).update(image_file=instance.image.name)
             instance.image_file.name = instance.image.name
 
+    @transaction.atomic
     def create(self, validated_data):
+        group_items = validated_data.pop('groupItems', None)
         subcat_id = validated_data.pop('subcategoryId', None)
         if subcat_id:
             try:
@@ -227,6 +341,8 @@ class ProductSerializer(serializers.ModelSerializer):
         instance = super().create(validated_data)
         if img_upload:
             self._share_image_path(instance)
+        if instance.is_grouped and group_items:
+            self._sync_group_items(instance, group_items)
 
         # Process multi-file gallery images from request.FILES (Maximum 4 allowed)
         if request and hasattr(request, 'FILES'):
@@ -243,7 +359,9 @@ class ProductSerializer(serializers.ModelSerializer):
 
         return instance
 
+    @transaction.atomic
     def update(self, instance, validated_data):
+        group_items = validated_data.pop('groupItems', None)
         subcat_id = validated_data.pop('subcategoryId', None)
         if subcat_id is not None:
             if subcat_id == "":
@@ -264,6 +382,11 @@ class ProductSerializer(serializers.ModelSerializer):
         instance = super().update(instance, validated_data)
         if request and hasattr(request, 'FILES') and (request.FILES.get('image') or request.FILES.get('image_file')):
             self._share_image_path(instance)
+        if instance.is_grouped:
+            if group_items is not None:
+                self._sync_group_items(instance, group_items)
+        else:
+            instance.group_items.all().delete()
 
         # Process deletion of existing gallery images if requested
         if request:

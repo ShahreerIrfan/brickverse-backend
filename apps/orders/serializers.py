@@ -57,10 +57,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
     sku = serializers.SerializerMethodField()
     productId = serializers.SerializerMethodField()
+    bundleItems = serializers.JSONField(source='bundle_items', read_only=True)
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'productId', 'product_name', 'price', 'quantity', 'image', 'sku']
+        fields = ['id', 'product', 'productId', 'product_name', 'price', 'quantity', 'image', 'sku', 'bundleItems']
 
     def get_productId(self, obj):
         return obj.product_id if obj.product_id else ""

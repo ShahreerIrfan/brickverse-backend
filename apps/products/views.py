@@ -2,7 +2,7 @@ from rest_framework import generics, filters, status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Q
+from django.db.models import Q, RestrictedError
 from .models import category_subtree_ids, Category, ProductSection, Product, ProductReview, ProductGalleryImage
 from .serializers import (
     CategorySerializer,
@@ -146,7 +146,7 @@ class ProductListView(generics.ListCreateAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = Product.objects.all().select_related('subcategory').order_by('-created_at', '-id')
+        queryset = Product.objects.all().select_related('subcategory').prefetch_related('group_items__child').order_by('-created_at', '-id')
         category = self.request.query_params.get('category')
         subcategory = self.request.query_params.get('subcategory')
         section = self.request.query_params.get('section')
@@ -181,6 +181,13 @@ class ProductListView(generics.ListCreateAPIView):
         return queryset
 
 
+def _in_bundle_message(ids):
+    from .models import GroupedProductItem
+    rows = GroupedProductItem.objects.filter(child_id__in=ids).exclude(group_id__in=ids).select_related('child', 'group')
+    parts = sorted({f'"{r.child.name}" (in bundle "{r.group.name}")' for r in rows})
+    return "Can't delete a product that is part of a grouped product: " + ", ".join(parts) + ". Remove it from the bundle first."
+
+
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = Product.objects.all().select_related('subcategory')
@@ -188,13 +195,19 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         lookup = self.kwargs.get('id')
-        obj = Product.objects.select_related('subcategory').filter(
+        obj = Product.objects.select_related('subcategory').prefetch_related('group_items__child').filter(
             Q(id=lookup) | Q(slug=lookup) | Q(sku=lookup)
         ).first()
         if not obj:
             from django.http import Http404
             raise Http404("Product not found")
         return obj
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except RestrictedError:
+            return Response({"error": _in_bundle_message([self.get_object().id])}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ProductReviewCreateView(generics.CreateAPIView):
@@ -215,7 +228,10 @@ class ProductBulkDeleteView(generics.GenericAPIView):
         if not ids or not isinstance(ids, list):
             return Response({"error": "A list of product IDs is required in 'ids'."}, status=status.HTTP_400_BAD_REQUEST)
         
-        deleted_count, _ = Product.objects.filter(id__in=ids).delete()
+        try:
+            deleted_count, _ = Product.objects.filter(id__in=ids).delete()
+        except RestrictedError:
+            return Response({"error": _in_bundle_message(ids)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({
             "success": True,
             "deleted_count": deleted_count,

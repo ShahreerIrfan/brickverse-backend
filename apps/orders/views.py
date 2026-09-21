@@ -124,44 +124,57 @@ class OrderListView(APIView):
         total_amount = float(data.get('total_amount', 0))
         order_number = f"KS-{uuid.uuid4().hex[:6].upper()}"
 
-        order = Order.objects.create(
-            order_number=order_number,
-            customer_name=customer_name,
-            customer_email=customer_email,
-            customer_phone=customer_phone,
-            shipping_address=shipping_address,
-            total_amount=total_amount,
-            status='pending',
-            carrier='Pathao Express (COD)'
-        )
+        from django.db import transaction
+        from apps.products.models import Product, InsufficientStock, deduct_stock
 
-        items_data = data.get('items', [])
-        from apps.products.models import Product
+        # Everything below is one transaction: if any grouped product can't be
+        # fulfilled (a child ran short), the order and every deduction made so
+        # far roll back together instead of leaving a half-created order.
+        try:
+            with transaction.atomic():
+                order = Order.objects.create(
+                    order_number=order_number,
+                    customer_name=customer_name,
+                    customer_email=customer_email,
+                    customer_phone=customer_phone,
+                    shipping_address=shipping_address,
+                    total_amount=total_amount,
+                    status='pending',
+                    carrier='Pathao Express (COD)'
+                )
 
-        for item in items_data:
-            prod_id = item.get('productId') or item.get('id') or item.get('product_id')
-            prod = Product.objects.filter(id=prod_id).first() if prod_id else None
-            
-            raw_price = item.get('price', 0)
-            try:
-                price_val = float(str(raw_price).replace('৳', '').replace('$', '').replace(',', '').strip() or 0)
-            except Exception:
-                price_val = 0.0
+                for item in data.get('items', []):
+                    prod_id = item.get('productId') or item.get('id') or item.get('product_id')
+                    prod = Product.objects.filter(id=prod_id).first() if prod_id else None
 
-            qty = int(item.get('quantity', 1))
+                    raw_price = item.get('price', 0)
+                    try:
+                        price_val = float(str(raw_price).replace('৳', '').replace('$', '').replace(',', '').strip() or 0)
+                    except Exception:
+                        price_val = 0.0
 
-            OrderItem.objects.create(
-                order=order,
-                product=prod,
-                product_name=item.get('name', prod.name if prod else 'Product Item'),
-                price=price_val,
-                quantity=qty
-            )
+                    qty = int(item.get('quantity', 1))
 
-            # Deduct inventory stock if product exists
-            if prod and prod.stock is not None:
-                prod.stock = max(0, prod.stock - qty)
-                prod.save(update_fields=['stock'])
+                    bundle_items = []
+                    if prod and prod.is_grouped:
+                        bundle_items = [
+                            {"name": gi.child.name, "quantity": gi.quantity}
+                            for gi in prod.group_items.select_related('child')
+                        ]
+
+                    OrderItem.objects.create(
+                        order=order,
+                        product=prod,
+                        product_name=item.get('name', prod.name if prod else 'Product Item'),
+                        price=price_val,
+                        quantity=qty,
+                        bundle_items=bundle_items,
+                    )
+
+                    if prod:
+                        deduct_stock(prod, qty)
+        except InsufficientStock as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
@@ -316,8 +329,8 @@ class AdminDashboardStatsView(APIView):
                     "id": p.id,
                     "name": p.name,
                     "category": cat_name,
-                    "sold": f"{p.stock or 45} in stock",
-                    "sold_count": p.stock or 45,
+                    "sold": f"{p.available_stock or 45} in stock",
+                    "sold_count": p.available_stock or 45,
                     "revenue": f"৳{price_cleaned:,.2f}",
                     "revenue_num": price_cleaned,
                     "percent": 50 + (idx * 12),

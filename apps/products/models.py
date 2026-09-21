@@ -115,6 +115,11 @@ class Product(models.Model):
     trade_price = models.CharField(max_length=50, blank=True, default="৳0.00")
     discount_percent = models.IntegerField(default=0, blank=True)
     stock = models.IntegerField(default=100)
+
+    TYPE_SIMPLE = 'simple'
+    TYPE_GROUPED = 'grouped'
+    PRODUCT_TYPE_CHOICES = [(TYPE_SIMPLE, 'Simple'), (TYPE_GROUPED, 'Grouped')]
+    product_type = models.CharField(max_length=20, choices=PRODUCT_TYPE_CHOICES, default=TYPE_SIMPLE)
     
     # Backward compatibility helpers
     price = models.CharField(max_length=50, blank=True, default="৳0.00")
@@ -159,6 +164,23 @@ class Product(models.Model):
 
         super().save(*args, **kwargs)
 
+    @property
+    def is_grouped(self):
+        return self.product_type == self.TYPE_GROUPED
+
+    @property
+    def available_stock(self):
+        """Simple products: their own stock. Grouped products never hold
+        stock of their own - how many whole bundles can be sold is limited
+        by whichever child product runs out first."""
+        if not self.is_grouped:
+            return self.stock
+        counts = [
+            max(0, (item.child.stock or 0) // item.quantity)
+            for item in self.group_items.all()
+        ]
+        return min(counts) if counts else 0
+
     def __str__(self):
         return self.name
 
@@ -191,3 +213,67 @@ class ProductReview(models.Model):
     def __str__(self):
         return f"{self.author_name} on {self.product.name} ({self.rating}★)"
 
+
+class GroupedProductItem(models.Model):
+    """One line of a grouped product: `quantity` units of an existing simple
+    product. Buying the group deducts quantity x bundles-bought from the
+    child's stock."""
+
+    group = models.ForeignKey(Product, related_name='group_items', on_delete=models.CASCADE)
+    # RESTRICT (not PROTECT): a child can't be deleted while a bundle still
+    # uses it, but deleting a bundle and its children in one go is allowed.
+    child = models.ForeignKey(Product, related_name='used_in_groups', on_delete=models.RESTRICT)
+    quantity = models.PositiveIntegerField(default=1)
+    order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'id']
+        constraints = [
+            models.UniqueConstraint(fields=['group', 'child'], name='unique_child_per_group'),
+            models.CheckConstraint(condition=models.Q(quantity__gte=1), name='group_item_quantity_gte_1'),
+        ]
+
+    def __str__(self):
+        return f"{self.quantity}x {self.child.name} in {self.group.name}"
+
+
+class InsufficientStock(Exception):
+    """A requested quantity can't be fulfilled from current stock."""
+
+
+def deduct_stock(product, qty):
+    """Deduct stock for `qty` units of `product`. Call inside
+    transaction.atomic(): rows are locked so concurrent orders can't
+    oversell a bundle's children.
+
+    Grouped: strict and all-or-nothing - every child must cover
+    child_quantity x qty, otherwise InsufficientStock is raised before
+    anything is changed. Simple: keeps the store's existing behaviour of
+    clamping at zero instead of refusing the order.
+    """
+    if product.is_grouped:
+        items = list(product.group_items.select_related('child'))
+        if not items:
+            raise InsufficientStock(f'"{product.name}" has no products in its bundle.')
+        locked = {
+            p.id: p
+            for p in Product.objects.select_for_update().filter(id__in=[i.child_id for i in items])
+        }
+        for item in items:
+            need = item.quantity * qty
+            have = locked[item.child_id].stock or 0
+            if have < need:
+                raise InsufficientStock(
+                    f'Not enough stock for "{product.name}": it needs {need} x {item.child.name} '
+                    f'but only {have} available.'
+                )
+        for item in items:
+            child = locked[item.child_id]
+            child.stock = (child.stock or 0) - item.quantity * qty
+            child.save(update_fields=['stock'])
+        return
+
+    locked = Product.objects.select_for_update().get(pk=product.pk)
+    if locked.stock is not None:
+        locked.stock = max(0, locked.stock - qty)
+        locked.save(update_fields=['stock'])
