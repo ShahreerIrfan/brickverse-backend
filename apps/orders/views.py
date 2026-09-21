@@ -162,6 +162,9 @@ class OrderListView(APIView):
                             for gi in prod.group_items.select_related('child')
                         ]
 
+                    # A simple product with no stock is taken as a pre-order.
+                    is_preorder = bool(prod and not prod.is_grouped and (prod.stock or 0) <= 0)
+
                     OrderItem.objects.create(
                         order=order,
                         product=prod,
@@ -169,9 +172,10 @@ class OrderListView(APIView):
                         price=price_val,
                         quantity=qty,
                         bundle_items=bundle_items,
+                        is_preorder=is_preorder,
                     )
 
-                    if prod:
+                    if prod and not is_preorder:
                         deduct_stock(prod, qty)
         except InsufficientStock as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

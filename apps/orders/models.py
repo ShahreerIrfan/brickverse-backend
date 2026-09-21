@@ -87,6 +87,8 @@ class OrderItem(models.Model):
     # For a grouped product: what one unit contained when it was bought, e.g.
     # [{"name": "Shampoo", "quantity": 2}] - a packing list that survives later edits.
     bundle_items = models.JSONField(default=list, blank=True)
+    # Simple product that had no stock when ordered: accepted as a pre-order, no stock deducted.
+    is_preorder = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.quantity}x {self.product_name}"
