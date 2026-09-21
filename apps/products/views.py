@@ -2,7 +2,8 @@ from rest_framework import generics, filters, status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Q, RestrictedError
+from django.db.models import Q, F, Case, When, Value, FloatField, RestrictedError
+from django.db.models.functions import Cast, Coalesce, NullIf, Replace
 from .models import category_subtree_ids, Category, ProductSection, Product, ProductReview, ProductGalleryImage
 from .serializers import (
     CategorySerializer,
@@ -178,7 +179,88 @@ class ProductListView(generics.ListCreateAPIView):
                 Q(category__icontains=search) |
                 Q(description__icontains=search)
             )
+        return self._apply_shop_filters(queryset)
+
+    # Prices are stored as text like "৳1,200.00"; this reads them as numbers so
+    # the shop can filter and sort in the database.
+    @staticmethod
+    def _price_number(field):
+        expr = F(field)
+        for junk in ('৳', ',', '$', ' '):
+            expr = Replace(expr, Value(junk), Value(''))
+        return Coalesce(Cast(NullIf(expr, Value('')), FloatField()), Value(0.0))
+
+    def _apply_shop_filters(self, queryset):
+        params = self.request.query_params
+
+        def number(name):
+            try:
+                return float(params.get(name))
+            except (TypeError, ValueError):
+                return None
+
+        min_price, max_price, min_rating = number('min_price'), number('max_price'), number('min_rating')
+        on_sale = params.get('on_sale') in ('1', 'true', 'True')
+        sort = params.get('sort') or 'newest'
+
+        needs_price = (
+            min_price is not None or max_price is not None or on_sale or sort in ('price_asc', 'price_desc')
+        )
+        if needs_price:
+            # An empty discounted price means "sold at the regular price".
+            queryset = queryset.annotate(
+                sell_num=Case(
+                    When(discounted_price='', then=self._price_number('price')),
+                    default=self._price_number('discounted_price'),
+                    output_field=FloatField(),
+                ),
+                regular_num=Case(
+                    When(regular_price='', then=self._price_number('original_price')),
+                    default=self._price_number('regular_price'),
+                    output_field=FloatField(),
+                ),
+            )
+        if min_price is not None:
+            queryset = queryset.filter(sell_num__gte=min_price)
+        if max_price is not None:
+            queryset = queryset.filter(sell_num__lte=max_price)
+        if on_sale:
+            queryset = queryset.filter(regular_num__gt=F('sell_num'))
+        if min_rating is not None:
+            queryset = queryset.filter(rating__gte=min_rating)
+
+        ordering = {
+            'price_asc': ('sell_num', '-created_at', '-id'),
+            'price_desc': ('-sell_num', '-created_at', '-id'),
+            'rating': ('-rating', '-created_at', '-id'),
+            'name_asc': ('name', '-id'),
+            'discount': ('-discount_percent', '-created_at', '-id'),
+        }.get(sort)
+        if ordering:
+            queryset = queryset.order_by(*ordering)
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        # Plain array (existing behaviour) unless the caller asks for a page.
+        if 'page' not in request.query_params:
+            return super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+            size = min(60, max(1, int(request.query_params.get('page_size', 20))))
+        except ValueError:
+            page, size = 1, 20
+        total = queryset.count()
+        start = (page - 1) * size
+        rows = list(queryset[start:start + size])
+        data = self.get_serializer(rows, many=True).data
+        return Response({
+            'count': total,
+            'page': page,
+            'pageSize': size,
+            'hasMore': start + size < total,
+            'results': data,
+        })
 
 
 def _in_bundle_message(ids):
