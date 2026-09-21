@@ -239,6 +239,9 @@ class ProductSerializer(serializers.ModelSerializer):
             rows.append((child_id, qty))
 
         children = {p.id: p for p in Product.objects.filter(id__in=[r[0] for r in rows])}
+        existing = {}
+        if self.instance is not None:
+            existing = {g.child_id: g.quantity for g in self.instance.group_items.all()}
         result = []
         for child_id, qty in rows:
             child = children.get(child_id)
@@ -249,6 +252,10 @@ class ProductSerializer(serializers.ModelSerializer):
             if child.is_grouped:
                 raise serializers.ValidationError(
                     f'"{child.name}" is a grouped product itself - only simple products can be added to a bundle.'
+                )
+            if qty > child.stock and qty > existing.get(child.id, 0):
+                raise serializers.ValidationError(
+                    f'"{child.name}" has only {child.stock} in stock, so a bundle cannot include {qty}.'
                 )
             result.append({'child': child, 'quantity': qty})
         return result
