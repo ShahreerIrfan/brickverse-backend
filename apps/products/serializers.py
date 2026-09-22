@@ -136,6 +136,28 @@ class ProductSerializer(serializers.ModelSerializer):
     # Write side of a grouped product's contents: [{"childId": "x", "quantity": 2}, ...].
     # Read side (groupItems + bundleTotal) is added in to_representation.
     groupItems = serializers.JSONField(write_only=True, required=False)
+    categoryPath = serializers.SerializerMethodField(read_only=True)
+
+    def get_categoryPath(self, obj):
+        """Ancestor chain for the breadcrumb: [top-level category, ..., immediate
+        subcategory]. Falls back to the flat `category` field for older products
+        that only have that set."""
+        chain, node, seen = [], obj.subcategory, set()
+        while node and node.id not in seen:
+            seen.add(node.id)
+            chain.append(node)
+            node = node.parent
+        chain.reverse()
+        if chain:
+            return [{'id': c.id, 'label': c.label, 'slug': c.slug or c.id} for c in chain]
+        if obj.category:
+            match = Category.objects.filter(
+                Q(id=obj.category) | Q(slug=obj.category) | Q(label__iexact=obj.category)
+            ).first()
+            if match:
+                return [{'id': match.id, 'label': match.label, 'slug': match.slug or match.id}]
+            return [{'id': obj.category, 'label': obj.category, 'slug': obj.category}]
+        return []
 
     class Meta:
         model = Product
@@ -149,6 +171,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'categoryColor',
             'subcategory',
             'subcategoryId',
+            'categoryPath',
             'name',
             'description',
             'image',

@@ -147,7 +147,7 @@ class ProductListView(generics.ListCreateAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = Product.objects.all().select_related('subcategory').prefetch_related('group_items__child').order_by('-created_at', '-id')
+        queryset = Product.objects.all().select_related('subcategory__parent').prefetch_related('group_items__child').order_by('-created_at', '-id')
         category = self.request.query_params.get('category')
         subcategory = self.request.query_params.get('subcategory')
         section = self.request.query_params.get('section')
@@ -272,12 +272,12 @@ def _in_bundle_message(ids):
 
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    queryset = Product.objects.all().select_related('subcategory')
+    queryset = Product.objects.all().select_related('subcategory__parent')
     serializer_class = ProductSerializer
 
     def get_object(self):
         lookup = self.kwargs.get('id')
-        obj = Product.objects.select_related('subcategory').prefetch_related('group_items__child').filter(
+        obj = Product.objects.select_related('subcategory__parent').prefetch_related('group_items__child').filter(
             Q(id=lookup) | Q(slug=lookup) | Q(sku=lookup)
         ).first()
         if not obj:
