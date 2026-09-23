@@ -20,7 +20,7 @@ class RegisterCustomerView(generics.CreateAPIView):
         user = serializer.save()
         login(request, user, backend='apps.users.backends.EmailAuthBackend')
         return Response({
-            "message": "Account created successfully! Welcome to Brickverse.",
+            "message": "Account created successfully! Welcome to Kawaii Subete.",
             "user": UserSerializer(user).data
         }, status=status.HTTP_201_CREATED)
 

@@ -24,12 +24,12 @@ class NavLink(models.Model):
 
 
 class StoreInfo(models.Model):
-    name = models.CharField(max_length=100, default="Brickverse")
+    name = models.CharField(max_length=100, default="Kawaii Subete")
     tagline = models.CharField(max_length=150, default="figures · bricks · code kits")
     phone = models.CharField(max_length=50, default="1800 246 010")
-    email = models.EmailField(default="hi@brickverse.com.au")
-    address = models.TextField(default="14 Maribyrnong St, Footscray VIC 3011")
-    about_text = models.TextField(default="Authentic anime figures, cartoon collectibles, brick sets and coding kits. Shipping Australia-wide from our Melbourne warehouse since 2019.")
+    email = models.EmailField(default="", blank=True)
+    address = models.TextField(default="", blank=True)
+    about_text = models.TextField(default="", blank=True)
     facebook_url = models.CharField(max_length=200, default="#", blank=True)
     instagram_url = models.CharField(max_length=200, default="#", blank=True)
     linkedin_url = models.CharField(max_length=200, default="#", blank=True)

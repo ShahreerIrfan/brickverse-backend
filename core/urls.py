@@ -11,7 +11,7 @@ from apps.marketing.views import NewsletterSubscribeView
 class APIRootView(APIView):
     def get(self, request):
         return Response({
-            "name": "Brickverse E-Commerce REST API",
+            "name": "Kawaii Subete E-Commerce REST API",
             "version": "1.1.0",
             "endpoints": {
                 "auth": "/api/auth/",
