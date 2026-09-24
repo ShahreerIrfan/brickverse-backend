@@ -154,6 +154,21 @@ class ProductListView(generics.ListCreateAPIView):
         search = self.request.query_params.get('search')
         badge = self.request.query_params.get('badge')
 
+        is_active_param = self.request.query_params.get('is_active')
+        show_all = (
+            self.request.query_params.get('all') in ('true', 'True', '1') or
+            self.request.query_params.get('admin') in ('true', 'True', '1') or
+            is_active_param == 'all'
+        )
+
+        if is_active_param in ('true', 'True', '1'):
+            queryset = queryset.filter(is_active=True)
+        elif is_active_param in ('false', 'False', '0'):
+            queryset = queryset.filter(is_active=False)
+        elif not show_all:
+            # Default for storefront: only active products are visible across the website
+            queryset = queryset.filter(is_active=True)
+
         if category:
             match = Category.objects.filter(Q(id=category) | Q(slug=category) | Q(label__iexact=category)).first()
             if match:
@@ -277,7 +292,15 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         lookup = self.kwargs.get('id')
-        obj = Product.objects.select_related('subcategory__parent').prefetch_related('group_items__child').filter(
+        allow_inactive = (
+            self.request.query_params.get('all') in ('true', 'True', '1') or
+            self.request.query_params.get('admin') in ('true', 'True', '1') or
+            self.request.method in ('PUT', 'PATCH', 'DELETE')
+        )
+        qs = Product.objects.select_related('subcategory__parent').prefetch_related('group_items__child')
+        if not allow_inactive:
+            qs = qs.filter(is_active=True)
+        obj = qs.filter(
             Q(id=lookup) | Q(slug=lookup) | Q(sku=lookup)
         ).first()
         if not obj:

@@ -125,7 +125,7 @@ class Product(models.Model):
     price = models.CharField(max_length=50, blank=True, default="৳0.00")
     original_price = models.CharField(max_length=50, blank=True, null=True)
     accent = models.CharField(max_length=20, default="#FF4D6D")
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True, verbose_name="Is active", help_text="Designates whether this product is active and visible on the website.")
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 

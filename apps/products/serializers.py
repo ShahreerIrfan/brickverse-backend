@@ -61,12 +61,12 @@ class CategorySerializer(serializers.ModelSerializer):
 
     def get_productCount(self, obj):
         from .models import Product
-        return Product.objects.filter(category__icontains=obj.id).count()
+        return Product.objects.filter(category__icontains=obj.id, is_active=True).count()
 
     def get_subtreeProductCount(self, obj):
         from .models import Product
         ids = category_subtree_ids(obj.id)
-        return Product.objects.filter(Q(category__iexact=obj.id) | Q(subcategory_id__in=ids)).count()
+        return Product.objects.filter(Q(category__iexact=obj.id) | Q(subcategory_id__in=ids), is_active=True).count()
 
     def validate_parent(self, value):
         if value and self.instance and value.id == self.instance.id:
@@ -133,6 +133,7 @@ class ProductSerializer(serializers.ModelSerializer):
     gallery_images = ProductGalleryImageSerializer(many=True, read_only=True)
     sectionId = serializers.CharField(source='section_id', required=False, allow_null=True, allow_blank=True)
     productType = serializers.ChoiceField(source='product_type', choices=Product.PRODUCT_TYPE_CHOICES, required=False)
+    is_active = serializers.BooleanField(required=False, default=True)
     # Write side of a grouped product's contents: [{"childId": "x", "quantity": 2}, ...].
     # Read side (groupItems + bundleTotal) is added in to_representation.
     groupItems = serializers.JSONField(write_only=True, required=False)
@@ -466,7 +467,7 @@ class ProductSerializer(serializers.ModelSerializer):
 class ProductSectionSerializer(serializers.ModelSerializer):
     eyebrowColor = serializers.CharField(source='eyebrow_color', read_only=True)
     itemCount = serializers.CharField(source='item_count', read_only=True)
-    products = ProductSerializer(many=True, read_only=True)
+    products = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductSection
@@ -480,4 +481,8 @@ class ProductSectionSerializer(serializers.ModelSerializer):
             'order',
             'products',
         ]
+
+    def get_products(self, obj):
+        active_products = obj.products.filter(is_active=True).order_by('-created_at', '-id')
+        return ProductSerializer(active_products, many=True, context=self.context).data
 

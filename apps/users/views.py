@@ -128,3 +128,48 @@ class UserDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
             user.set_password(str(password).strip())
             user.save()
 
+
+class ChangePasswordView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        current_password = request.data.get('current_password', '')
+        new_password = request.data.get('new_password', '')
+        confirm_password = request.data.get('confirm_password', '')
+        user_id = request.data.get('user_id')
+        email = request.data.get('email')
+
+        user = None
+        if request.user and request.user.is_authenticated:
+            user = request.user
+        elif user_id:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                pass
+        elif email:
+            try:
+                user = User.objects.get(email__iexact=email.strip())
+            except User.DoesNotExist:
+                pass
+
+        if not user:
+            return Response({"error": "User account not identified. Please log in first."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if not current_password:
+            return Response({"error": "Current password is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(current_password):
+            return Response({"error": "Current password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not new_password or len(str(new_password).strip()) < 6:
+            return Response({"error": "New password must be at least 6 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if confirm_password and str(new_password).strip() != str(confirm_password).strip():
+            return Response({"error": "New password confirmation does not match."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(str(new_password).strip())
+        user.save()
+        return Response({"success": True, "message": "Password updated successfully!"}, status=status.HTTP_200_OK)
+
+
