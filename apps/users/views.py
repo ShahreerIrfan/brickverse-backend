@@ -2,12 +2,207 @@ from rest_framework import generics, status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth import authenticate, login, logout
-from .models import User, CustomerUser, AdminUser
+from datetime import timedelta
+from django.utils import timezone
+from .models import User, CustomerUser, AdminUser, EmailOTP
 from .serializers import (
     UserSerializer,
     CustomerRegistrationSerializer,
     AdminUserSerializer,
 )
+from .utils import generate_otp_code, send_otp_email
+
+
+class SendSignupOTPView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        if not email:
+            return Response(
+                {"error": "Please provide a valid email address."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if user already exists
+        if User.objects.filter(email__iexact=email).exists():
+            return Response(
+                {"error": "An account with this email address already exists. Please log in instead."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Rate limiting: Check if an OTP was sent in the last 60 seconds
+        recent_otp = EmailOTP.objects.filter(
+            email=email,
+            purpose=EmailOTP.PURPOSE_SIGNUP,
+            created_at__gte=timezone.now() - timedelta(seconds=60)
+        ).first()
+
+        if recent_otp:
+            return Response(
+                {"error": "Please wait a minute before requesting another OTP."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        otp_code = generate_otp_code()
+        expires_at = timezone.now() + timedelta(minutes=10)
+
+        # Invalidate previous unused signup OTPs for this email
+        EmailOTP.objects.filter(
+            email=email,
+            purpose=EmailOTP.PURPOSE_SIGNUP,
+            is_used=False
+        ).update(is_used=True)
+
+        EmailOTP.objects.create(
+            email=email,
+            otp=otp_code,
+            purpose=EmailOTP.PURPOSE_SIGNUP,
+            expires_at=expires_at
+        )
+
+        try:
+            send_otp_email(to_email=email, otp_code=otp_code, purpose="signup")
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to send email OTP. Please verify your email or try again later. ({str(e)})"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return Response({
+            "success": True,
+            "message": f"A 6-digit verification code has been sent to {email}."
+        }, status=status.HTTP_200_OK)
+
+
+class VerifySignupOTPView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        otp = request.data.get('otp', '').strip()
+        password = request.data.get('password', '').strip()
+        first_name = request.data.get('first_name', '').strip()
+        last_name = request.data.get('last_name', '').strip()
+        phone = request.data.get('phone', '').strip()
+
+        if not email or not otp:
+            return Response(
+                {"error": "Email and 6-digit OTP are required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not password or len(password) < 6:
+            return Response(
+                {"error": "Password must be at least 6 characters long."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if User.objects.filter(email__iexact=email).exists():
+            return Response(
+                {"error": "An account with this email address already exists. Please log in."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Verify OTP
+        otp_obj = EmailOTP.objects.filter(
+            email=email,
+            otp=otp,
+            purpose=EmailOTP.PURPOSE_SIGNUP,
+            is_used=False
+        ).first()
+
+        if not otp_obj:
+            return Response(
+                {"error": "Invalid verification code. Please check and try again."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if otp_obj.is_expired:
+            return Response(
+                {"error": "Verification code has expired. Please request a new one."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Mark OTP as used
+        otp_obj.is_used = True
+        otp_obj.save(update_fields=['is_used'])
+
+        # Create Customer User
+        user = CustomerUser.objects.create_user(
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            is_verified=True
+        )
+
+        # Auto login
+        login(request, user, backend='apps.users.backends.EmailAuthBackend')
+
+        return Response({
+            "success": True,
+            "message": "Account created and verified successfully! Welcome to Kawaii Subete.",
+            "user": UserSerializer(user).data
+        }, status=status.HTTP_201_CREATED)
+
+
+class ResendOTPView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        purpose = request.data.get('purpose', EmailOTP.PURPOSE_SIGNUP)
+
+        if not email:
+            return Response(
+                {"error": "Please provide your email address."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Rate limiting: 60s
+        recent_otp = EmailOTP.objects.filter(
+            email=email,
+            purpose=purpose,
+            created_at__gte=timezone.now() - timedelta(seconds=60)
+        ).first()
+
+        if recent_otp:
+            return Response(
+                {"error": "Please wait 60 seconds before requesting a new code."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        otp_code = generate_otp_code()
+        expires_at = timezone.now() + timedelta(minutes=10)
+
+        EmailOTP.objects.filter(
+            email=email,
+            purpose=purpose,
+            is_used=False
+        ).update(is_used=True)
+
+        EmailOTP.objects.create(
+            email=email,
+            otp=otp_code,
+            purpose=purpose,
+            expires_at=expires_at
+        )
+
+        try:
+            send_otp_email(to_email=email, otp_code=otp_code, purpose=purpose)
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to send email. ({str(e)})"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return Response({
+            "success": True,
+            "message": f"A new verification code has been sent to {email}."
+        }, status=status.HTTP_200_OK)
+
 
 class RegisterCustomerView(generics.CreateAPIView):
     queryset = CustomerUser.objects.all()
@@ -23,6 +218,7 @@ class RegisterCustomerView(generics.CreateAPIView):
             "message": "Account created successfully! Welcome to Kawaii Subete.",
             "user": UserSerializer(user).data
         }, status=status.HTTP_201_CREATED)
+
 
 
 class LoginView(APIView):

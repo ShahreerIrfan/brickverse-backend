@@ -115,7 +115,38 @@ class CustomerProfile(models.Model):
         return f"Customer Profile for {self.user.email}"
 
 
+class EmailOTP(models.Model):
+    PURPOSE_SIGNUP = 'signup'
+    PURPOSE_RESET_PASSWORD = 'reset_password'
+    PURPOSE_CHOICES = [
+        (PURPOSE_SIGNUP, 'Signup Verification'),
+        (PURPOSE_RESET_PASSWORD, 'Password Reset'),
+    ]
+
+    email = models.EmailField(db_index=True)
+    otp = models.CharField(max_length=6)
+    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default=PURPOSE_SIGNUP)
+    is_used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['email', 'purpose', 'is_used']),
+        ]
+
+    def __str__(self):
+        return f"OTP for {self.email} ({self.purpose}) - {self.otp}"
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
+
+
 @receiver(post_save, sender=User)
 def create_customer_profile(sender, instance, created, **kwargs):
     if created and instance.role == User.ROLE_CUSTOMER:
         CustomerProfile.objects.get_or_create(user=instance)
+
