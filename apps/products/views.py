@@ -2,8 +2,9 @@ from rest_framework import generics, filters, status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Q, F, Case, When, Value, FloatField, RestrictedError
-from django.db.models.functions import Cast, Coalesce, NullIf, Replace
+from django.db.models.functions import Cast, Coalesce, NullIf, Replace, MD5, Concat
+from django.db.models import Q, F, Case, When, Value, FloatField, CharField, RestrictedError
+
 from .models import category_subtree_ids, Category, ProductSection, Product, ProductReview, ProductGalleryImage
 from .serializers import (
     CategorySerializer,
@@ -250,10 +251,23 @@ class ProductListView(generics.ListCreateAPIView):
             'rating': ('-rating', '-created_at', '-id'),
             'name_asc': ('name', '-id'),
             'discount': ('-discount_percent', '-created_at', '-id'),
+            'newest': ('-created_at', '-id'),
         }.get(sort)
+
+        seed = params.get('seed')
+        is_random = sort in ('random', 'rand') or bool(seed)
+
         if ordering:
             queryset = queryset.order_by(*ordering)
+        elif is_random:
+            # Deterministic per-seed random sorting ensures clean pagination without duplicate items
+            seed_val = str(seed).strip() if seed else 'kawaii_default_seed'
+            queryset = queryset.annotate(
+                _rand_order=MD5(Concat(Cast('id', CharField()), Value(seed_val)))
+            ).order_by('_rand_order')
+
         return queryset
+
 
     def list(self, request, *args, **kwargs):
         # Plain array (existing behaviour) unless the caller asks for a page.
