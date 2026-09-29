@@ -6,6 +6,9 @@ echo "==> Waiting for database connection if needed..."
 echo "==> Running database migrations..."
 python manage.py migrate --noinput
 
+echo "==> Ensuring catalog data and admin users are seeded..."
+python manage.py seed_catalog || true
+
 echo "==> Collecting static files..."
 python manage.py collectstatic --noinput
 
