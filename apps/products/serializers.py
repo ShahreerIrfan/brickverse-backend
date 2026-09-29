@@ -277,7 +277,7 @@ class ProductSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f'"{child.name}" is a grouped product itself - only simple products can be added to a bundle.'
                 )
-            if qty > child.stock and qty > existing.get(child.id, 0):
+            if qty > (child.stock or 0):
                 raise serializers.ValidationError(
                     f'"{child.name}" has only {child.stock} in stock, so a bundle cannot include {qty}.'
                 )
@@ -305,13 +305,16 @@ class ProductSerializer(serializers.ModelSerializer):
                     })
         return attrs
 
-    @staticmethod
-    def _sync_group_items(instance, items):
+    @classmethod
+    def _sync_group_items(cls, instance, items):
         instance.group_items.all().delete()
         GroupedProductItem.objects.bulk_create([
             GroupedProductItem(group=instance, child=row['child'], quantity=row['quantity'], order=index)
             for index, row in enumerate(items)
         ])
+        total_tp = sum(cls._price_value(row['child'].trade_price) * row['quantity'] for row in items)
+        instance.trade_price = f"৳{total_tp:.2f}"
+        instance.save(update_fields=['trade_price'])
 
     def get_image(self, obj):
         img = obj.image or getattr(obj, 'image_file', None)
