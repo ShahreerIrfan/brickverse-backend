@@ -170,6 +170,11 @@ class ProductListView(generics.ListCreateAPIView):
             # Default for storefront: only active products are visible across the website
             queryset = queryset.filter(is_active=True)
 
+        ids_param = self.request.query_params.get('ids')
+        if ids_param:
+            id_list = [x.strip() for x in ids_param.split(',') if x.strip()]
+            queryset = queryset.filter(Q(id__in=id_list) | Q(slug__in=id_list))
+
         if category:
             match = Category.objects.filter(Q(id=category) | Q(slug=category) | Q(label__iexact=category)).first()
             if match:
