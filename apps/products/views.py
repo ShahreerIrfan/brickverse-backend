@@ -195,6 +195,12 @@ class ProductListView(generics.ListCreateAPIView):
                 Q(category__icontains=search) |
                 Q(description__icontains=search)
             )
+        product_type = self.request.query_params.get('product_type') or self.request.query_params.get('type')
+        deals = self.request.query_params.get('deals') in ('1', 'true', 'True')
+        if deals or product_type == 'grouped':
+            queryset = queryset.filter(product_type=Product.TYPE_GROUPED)
+        elif product_type:
+            queryset = queryset.filter(product_type=product_type)
         return self._apply_shop_filters(queryset)
 
     # Prices are stored as text like "৳1,200.00"; this reads them as numbers so
