@@ -6,7 +6,12 @@ from django.views.static import serve
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from apps.products.views import CategoryListView, CategoryDetailView, ProductSectionListView
-from apps.marketing.views import NewsletterSubscribeView
+from apps.marketing.views import (
+    NewsletterSubscribeView,
+    CouponListCreateView,
+    CouponDetailView,
+    CouponValidateView,
+)
 
 class APIRootView(APIView):
     def get(self, request):
@@ -26,6 +31,7 @@ class APIRootView(APIView):
                 "marketing_nav": "/api/marketing/nav-links/",
                 "marketing_store": "/api/marketing/store-info/",
                 "newsletter": "/api/newsletter/subscribe/",
+                "coupons": "/api/coupons/",
                 "partner_stores": "/api/stores/",
                 "logs": "/api/logs/",
                 "blog": "/api/blog/posts/",
@@ -51,6 +57,9 @@ urlpatterns = [
     path('api/categories/<str:id>/', CategoryDetailView.as_view(), name='top-category-detail'),
     path('api/sections/', ProductSectionListView.as_view(), name='top-sections'),
     path('api/newsletter/subscribe/', NewsletterSubscribeView.as_view(), name='top-newsletter'),
+    path('api/coupons/', CouponListCreateView.as_view(), name='top-coupons-list-create'),
+    path('api/coupons/<int:pk>/', CouponDetailView.as_view(), name='top-coupons-detail'),
+    path('api/coupons/validate/', CouponValidateView.as_view(), name='top-coupons-validate'),
 
     # Media files serving (Production & Development)
     re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
