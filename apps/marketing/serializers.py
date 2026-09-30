@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, FooterLink, ContactMessage, HeroSlide
+from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, FooterLink, ContactMessage, HeroSlide, Coupon
 
 class NewsletterSubscriberSerializer(serializers.ModelSerializer):
     class Meta:
@@ -116,3 +116,44 @@ class ContactMessageSerializer(serializers.ModelSerializer):
         model = ContactMessage
         fields = ['id', 'name', 'email', 'subject', 'message', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class CouponSerializer(serializers.ModelSerializer):
+    is_valid = serializers.SerializerMethodField()
+    status_text = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Coupon
+        fields = [
+            'id',
+            'code',
+            'description',
+            'discount_type',
+            'value',
+            'min_order_amount',
+            'max_discount',
+            'usage_limit',
+            'per_user_limit',
+            'times_used',
+            'start_date',
+            'end_date',
+            'is_active',
+            'is_valid',
+            'status_text',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'times_used', 'created_at', 'updated_at', 'is_valid', 'status_text']
+
+    def get_is_valid(self, obj):
+        valid, _ = obj.is_valid_now()
+        return valid
+
+    def get_status_text(self, obj):
+        valid, msg = obj.is_valid_now()
+        if not obj.is_active:
+            return "Inactive"
+        if not valid:
+            return msg
+        return "Active"
+

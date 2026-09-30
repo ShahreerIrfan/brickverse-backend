@@ -8,6 +8,9 @@ from .views import (
     HeroSlideListView,
     HeroSlideAdminListView,
     HeroSlideDetailView,
+    CouponListCreateView,
+    CouponDetailView,
+    CouponValidateView,
 )
 
 urlpatterns = [
@@ -19,4 +22,8 @@ urlpatterns = [
     path('hero-slides/', HeroSlideListView.as_view(), name='hero-slides'),
     path('hero-slides/all/', HeroSlideAdminListView.as_view(), name='hero-slides-admin'),
     path('hero-slides/<int:pk>/', HeroSlideDetailView.as_view(), name='hero-slide-detail'),
+    path('coupons/', CouponListCreateView.as_view(), name='coupon-list-create'),
+    path('coupons/<int:pk>/', CouponDetailView.as_view(), name='coupon-detail'),
+    path('coupons/validate/', CouponValidateView.as_view(), name='coupon-validate'),
 ]
+
