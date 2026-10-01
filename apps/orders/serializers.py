@@ -109,6 +109,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    shipping_cost = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -120,9 +121,20 @@ class OrderSerializer(serializers.ModelSerializer):
             'customer_phone',
             'shipping_address',
             'total_amount',
+            'shipping_cost',
             'status',
             'tracking_number',
             'carrier',
             'created_at',
             'items',
         ]
+
+    def get_shipping_cost(self, obj):
+        try:
+            items_total = sum(float(item.price) * item.quantity for item in obj.items.all())
+            total = float(obj.total_amount)
+            if total > items_total:
+                return round(total - items_total, 2)
+        except Exception:
+            pass
+        return 0.0
