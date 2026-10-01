@@ -68,13 +68,39 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return obj.product_id if obj.product_id else ""
 
     def get_image(self, obj):
-        if obj.product:
-            img = obj.product.image or getattr(obj.product, 'image_file', None)
+        prod = obj.product
+        if not prod and getattr(obj, 'product_id', None):
+            try:
+                from apps.products.models import Product
+                prod = Product.objects.filter(id=obj.product_id).first()
+            except Exception:
+                pass
+        if not prod and getattr(obj, 'product_name', None):
+            try:
+                from apps.products.models import Product
+                prod = Product.objects.filter(name=obj.product_name).first()
+            except Exception:
+                pass
+
+        if prod:
+            img = prod.image or getattr(prod, 'image_file', None)
             if img:
                 try:
                     return img.url
                 except Exception:
                     return str(img)
+            try:
+                first_gal = prod.gallery_images.first()
+                if first_gal:
+                    if first_gal.image_file:
+                        try:
+                            return first_gal.image_file.url
+                        except Exception:
+                            return str(first_gal.image_file)
+                    if first_gal.image_url:
+                        return first_gal.image_url
+            except Exception:
+                pass
         return "/images/figure-samurai-red.svg"
 
     def get_sku(self, obj):
