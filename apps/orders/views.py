@@ -140,7 +140,7 @@ class OrderListView(APIView):
                     shipping_address=shipping_address,
                     total_amount=total_amount,
                     status='pending',
-                    carrier='Pathao Express (COD)'
+                    carrier='Steadfast Courier (COD)'
                 )
 
                 for item in data.get('items', []):
