@@ -66,6 +66,7 @@ class Order(models.Model):
     customer_phone = models.CharField(max_length=50, blank=True)
     shipping_address = models.TextField()
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, default=60.00)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     tracking_number = models.CharField(max_length=100, blank=True)
     carrier = models.CharField(max_length=100, default="Steadfast Courier", blank=True)

@@ -130,6 +130,9 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
 
     def get_shipping_cost(self, obj):
+        cost = getattr(obj, 'shipping_cost', None)
+        if cost is not None:
+            return float(cost)
         try:
             items_total = sum(float(item.price) * item.quantity for item in obj.items.all())
             total = float(obj.total_amount)
@@ -137,4 +140,5 @@ class OrderSerializer(serializers.ModelSerializer):
                 return round(total - items_total, 2)
         except Exception:
             pass
-        return 0.0
+        addr = (obj.shipping_address or "").lower()
+        return 60.0 if "dhaka" in addr else 120.0

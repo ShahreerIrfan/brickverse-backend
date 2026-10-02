@@ -119,8 +119,19 @@ class OrderListView(APIView):
         customer_name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or data.get('customer_name', 'Valued Customer')
         customer_email = data.get('customer_email') or data.get('email', 'guest@kawaiisubete.com')
         customer_phone = data.get('customer_phone') or data.get('phone', '')
-        district_val = data.get('district') or data.get('city', '')
+        district_val = str(data.get('district') or data.get('city') or '').strip()
         shipping_address = f"{data.get('address', '')}, {district_val}".strip(', ') or data.get('shipping_address', 'Dhaka, Bangladesh')
+        
+        # Delivery charge policy: ৳60 inside Dhaka, ৳120 for all other 63 districts.
+        # Delivery is never free (no free shipping threshold for >= ৳500).
+        is_dhaka = district_val.lower() == 'dhaka' or 'dhaka' in shipping_address.lower()
+        default_shipping = 60.0 if is_dhaka else 120.0
+        try:
+            passed_cost = float(data.get('shipping_cost', default_shipping))
+            shipping_cost = passed_cost if passed_cost in (60.0, 120.0) else default_shipping
+        except (ValueError, TypeError):
+            shipping_cost = default_shipping
+
         total_amount = float(data.get('total_amount', 0))
         order_number = f"KS-{uuid.uuid4().hex[:6].upper()}"
 
@@ -139,6 +150,7 @@ class OrderListView(APIView):
                     customer_phone=customer_phone,
                     shipping_address=shipping_address,
                     total_amount=total_amount,
+                    shipping_cost=shipping_cost,
                     status='pending',
                     carrier='Steadfast Courier (COD)'
                 )
