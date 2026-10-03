@@ -2,8 +2,8 @@ from django.db import models
 
 class Announcement(models.Model):
     message = models.CharField(max_length=200, default="Delivery: ৳60 inside Dhaka · ৳120 nationwide")
-    highlight_message = models.CharField(max_length=255, default="Code BUILD10 saves you 10% on your first order")
-    coupon_code = models.CharField(max_length=50, blank=True, default="BUILD10")
+    highlight_message = models.CharField(max_length=255, default="Fast nationwide delivery across all 64 districts")
+    coupon_code = models.CharField(max_length=50, blank=True, default="")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
