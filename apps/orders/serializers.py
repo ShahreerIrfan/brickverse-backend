@@ -56,18 +56,16 @@ class WishlistItemSerializer(serializers.ModelSerializer):
 class OrderItemSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
     sku = serializers.SerializerMethodField()
+    slug = serializers.SerializerMethodField()
     productId = serializers.SerializerMethodField()
     bundleItems = serializers.JSONField(source='bundle_items', read_only=True)
     isPreorder = serializers.BooleanField(source='is_preorder', read_only=True)
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'productId', 'product_name', 'price', 'quantity', 'image', 'sku', 'bundleItems', 'isPreorder']
+        fields = ['id', 'product', 'productId', 'product_name', 'price', 'quantity', 'image', 'sku', 'slug', 'bundleItems', 'isPreorder']
 
-    def get_productId(self, obj):
-        return obj.product_id if obj.product_id else ""
-
-    def get_image(self, obj):
+    def _get_product_instance(self, obj):
         prod = obj.product
         if not prod and getattr(obj, 'product_id', None):
             try:
@@ -81,7 +79,22 @@ class OrderItemSerializer(serializers.ModelSerializer):
                 prod = Product.objects.filter(name=obj.product_name).first()
             except Exception:
                 pass
+        return prod
 
+    def get_productId(self, obj):
+        if obj.product_id:
+            return str(obj.product_id)
+        prod = self._get_product_instance(obj)
+        return str(prod.id) if prod else ""
+
+    def get_slug(self, obj):
+        prod = self._get_product_instance(obj)
+        if prod and getattr(prod, 'slug', None):
+            return prod.slug
+        return str(obj.product_id) if obj.product_id else ""
+
+    def get_image(self, obj):
+        prod = self._get_product_instance(obj)
         if prod:
             img = prod.image or getattr(prod, 'image_file', None)
             if img:
@@ -104,7 +117,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return "/images/figure-samurai-red.svg"
 
     def get_sku(self, obj):
-        return obj.product.sku if obj.product else ""
+        prod = self._get_product_instance(obj)
+        if prod and getattr(prod, 'sku', None):
+            return prod.sku
+        return ""
 
 
 class OrderSerializer(serializers.ModelSerializer):
