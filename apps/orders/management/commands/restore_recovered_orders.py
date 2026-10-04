@@ -5,38 +5,40 @@ from apps.products.models import Product
 
 RECOVERED_ORDERS_DATA = [
     {
-        "order_number": "KS-D1D2EA",
-        "customer_name": "Ashraful Haque",
-        "customer_phone": "01865454378",
-        "customer_email": "01865454378@fb-customer.local",
-        "shipping_address": "Madartek shorkarpara 114/2 basaboo, Dhaka (Source: Facebook Page)",
-        "shipping_cost": 60.00,
-        "status": "processing",
-        "carrier": "Steadfast Courier (COD)",
-        "items": [
-            {
-                "slug": "marvels-deadpool-building-blocks-setf3022",
-                "name": "Marvel's Deadpool Building Blocks Set (F3022)",
-                "quantity": 1,
-                "fallback_price": 450.00,
-            }
-        ]
-    },
-    {
         "order_number": "KS-DAE793",
         "customer_name": "Sabit Hasan Farabi",
         "customer_phone": "01885012515",
         "customer_email": "shfhasanfarabi22@gmail.com",
         "shipping_address": "147/21/1 South pirerbag, 60 feet road, Dhaka , Dhaka",
         "shipping_cost": 60.00,
+        "total_amount": 360.00,
         "status": "processing",
         "carrier": "Steadfast Courier (COD)",
         "items": [
             {
-                "slug": "pokmon-classic-character-series-high-quality-version-bulbasaur",
-                "name": "Pokémon Classic Character Series (High Quality Version): Bulbasaur",
+                "slug": "red-pirate-ship-building-blocks-set-caribbean-series-display-ship-model-a5",
+                "name": "Red Pirate Ship Building Blocks Set – Caribbean Series Display Ship Model (A5)",
                 "quantity": 1,
-                "fallback_price": 550.00,
+                "price": 300.00,
+            }
+        ]
+    },
+    {
+        "order_number": "KS-D1D2EA",
+        "customer_name": "Ashraful Haque",
+        "customer_phone": "01865454378",
+        "customer_email": "01865454378@fb-customer.local",
+        "shipping_address": "Madartek shorkarpara 114/2 basaboo, Dhaka (Source: Facebook Page)",
+        "shipping_cost": 60.00,
+        "total_amount": 360.00,
+        "status": "processing",
+        "carrier": "Steadfast Courier (COD)",
+        "items": [
+            {
+                "slug": "black-pirate-ship-building-blocks-set-caribbean-series-display-ship-model-a1",
+                "name": "Black Pirate Ship Building Blocks Set – Caribbean Series Display Ship Model (A1)",
+                "quantity": 1,
+                "price": 300.00,
             }
         ]
     },
@@ -47,20 +49,27 @@ RECOVERED_ORDERS_DATA = [
         "customer_email": "sorowarjahan59@gmail.com",
         "shipping_address": "Sonirakra 24 ft rosulbug mosjid green tower building, kodomtali, dhaka , Dhaka",
         "shipping_cost": 60.00,
+        "total_amount": 1110.00,
         "status": "pending",
         "carrier": "Steadfast Courier (COD)",
         "items": [
             {
-                "slug": "cute-cat-plush-toy-with-bell-collargray",
-                "name": "Cute Cat Plush Toy with Bell Collar (Black)",
+                "slug": "windmill-cottage-building-blocks-set-red-architecture-house-model-mz-216",
+                "name": "Windmill Cottage Building Blocks Set – Red Architecture House Model (MZ-216)",
                 "quantity": 1,
-                "fallback_price": 450.00,
+                "price": 350.00,
             },
             {
-                "slug": "compact-cat-design-faux-leather-pocket-walletdark-pink",
-                "name": "Compact Cat Design Faux Leather Pocket Wallet (Dark Pink)",
+                "slug": "ice-cream-vending-cart-building-blocks-set-cute-dessert-cart-diy-model-no-k400",
+                "name": "Ice Cream Vending Cart Building Blocks Set – Cute Dessert Cart DIY Model (NO. K400)",
                 "quantity": 1,
-                "fallback_price": 380.00,
+                "price": 350.00,
+            },
+            {
+                "slug": "windmill-cottage-building-blocks-set-blue-architecture-house-model-mz-215",
+                "name": "Windmill Cottage Building Blocks Set – Blue Architecture House Model (MZ-215)",
+                "quantity": 1,
+                "price": 350.00,
             }
         ]
     },
@@ -71,36 +80,7 @@ RECOVERED_ORDERS_DATA = [
         "customer_email": "sarah251071066@gmail.com",
         "shipping_address": "House 44, road 13, sector 12, uttara dhaka, Dhaka",
         "shipping_cost": 60.00,
-        "status": "pending",
-        "carrier": "Steadfast Courier (COD)",
-        "items": [
-            {
-                "slug": "blue-rose-flower-building-blocks-set-botanical-display-model-no7235",
-                "name": "Blue Rose Flower Building Blocks Set – Botanical Display Model (NO.7235)",
-                "quantity": 1,
-                "fallback_price": 520.00,
-            },
-            {
-                "slug": "white-lily-flower-building-blocks-set-botanical-display-model-no7242",
-                "name": "White Lily Flower Building Blocks Set – Botanical Display Model (NO.7242)",
-                "quantity": 1,
-                "fallback_price": 520.00,
-            },
-            {
-                "slug": "pokmon-classic-character-series-high-quality-version-jigglypuff",
-                "name": "Pokémon Classic Character Series (High Quality Version): Jigglypuff",
-                "quantity": 1,
-                "fallback_price": 550.00,
-            }
-        ]
-    },
-    {
-        "order_number": "KS-098028",
-        "customer_name": "Shahreer Irfan",
-        "customer_phone": "01344260216",
-        "customer_email": "kawaiisubete1@gmail.com",
-        "shipping_address": "Kachua, Chandpur, Dhaka",
-        "shipping_cost": 120.00,
+        "total_amount": 410.00,
         "status": "pending",
         "carrier": "Steadfast Courier (COD)",
         "items": [
@@ -108,7 +88,7 @@ RECOVERED_ORDERS_DATA = [
                 "slug": "demon-slayer-palverse-chibi-action-figures-giyu-tomioka",
                 "name": "Demon Slayer PalVerse Chibi Action Figures – Giyu Tomioka",
                 "quantity": 1,
-                "fallback_price": 650.00,
+                "price": 350.00,
             }
         ]
     },
@@ -119,6 +99,7 @@ RECOVERED_ORDERS_DATA = [
         "customer_email": "mdshahreerirfan@gmail.com",
         "shipping_address": "Kachua, Chandpur (Source: Facebook Page)",
         "shipping_cost": 120.00,
+        "total_amount": 1320.00,
         "status": "cancelled",
         "carrier": "Steadfast Courier (COD)",
         "items": [
@@ -126,7 +107,7 @@ RECOVERED_ORDERS_DATA = [
                 "slug": "one-piece-bricks-set",
                 "name": "One Piece BRICKS Set",
                 "quantity": 1,
-                "fallback_price": 1200.00,
+                "price": 1200.00,
             }
         ]
     },
@@ -137,6 +118,7 @@ RECOVERED_ORDERS_DATA = [
         "customer_email": "mdshahreerirfan@gmail.com",
         "shipping_address": "Niketan Bazar, (Beside Lucky Khan Mosjid), Banani, Dhaka-1212., Dhaka",
         "shipping_cost": 60.00,
+        "total_amount": 1510.00,
         "status": "cancelled",
         "carrier": "Steadfast Courier (COD)",
         "items": [
@@ -144,7 +126,7 @@ RECOVERED_ORDERS_DATA = [
                 "slug": "black-pirate-ship-building-blocks-set-caribbean-series-display-ship-model-a1",
                 "name": "Black Pirate Ship Building Blocks Set – Caribbean Series Display Ship Model (A1)",
                 "quantity": 1,
-                "fallback_price": 1450.00,
+                "price": 1450.00,
             }
         ]
     }
@@ -152,54 +134,16 @@ RECOVERED_ORDERS_DATA = [
 
 
 class Command(BaseCommand):
-    help = "Restores the 7 deleted orders back into the database with accurate customer details and items"
+    help = "Restores all extracted deleted orders back into production database"
 
     def handle(self, *args, **options):
-        self.stdout.write(self.style.NOTICE("==> Restoring recovered orders..."))
+        self.stdout.write(self.style.NOTICE("==> Seeding recovered orders to database..."))
         created_count = 0
         updated_count = 0
 
         with transaction.atomic():
             for data in RECOVERED_ORDERS_DATA:
                 order_num = data["order_number"]
-                
-                # Check if product prices can be resolved dynamically from catalog
-                total_items_cost = 0.0
-                resolved_items = []
-
-                for it in data["items"]:
-                    prod = Product.objects.filter(slug=it["slug"]).first()
-                    if not prod:
-                        prod = Product.objects.filter(name__iexact=it["name"]).first()
-                    if not prod:
-                        prod = Product.objects.filter(id=it["slug"]).first()
-
-                    # Calculate unit price
-                    unit_price = it["fallback_price"]
-                    if prod:
-                        raw = prod.discounted_price or prod.price or prod.regular_price
-                        try:
-                            unit_price = float(str(raw).replace('৳', '').replace('$', '').replace(',', '').strip() or unit_price)
-                        except Exception:
-                            pass
-
-                    bundle_items = []
-                    if prod and prod.is_grouped:
-                        bundle_items = [
-                            {"name": gi.child.name, "quantity": gi.quantity}
-                            for gi in prod.group_items.select_related('child')
-                        ]
-
-                    total_items_cost += unit_price * it["quantity"]
-                    resolved_items.append({
-                        "product": prod,
-                        "name": prod.name if prod else it["name"],
-                        "price": unit_price,
-                        "quantity": it["quantity"],
-                        "bundle_items": bundle_items,
-                    })
-
-                total_amount = total_items_cost + data["shipping_cost"]
 
                 order, created = Order.objects.get_or_create(
                     order_number=order_num,
@@ -209,7 +153,7 @@ class Command(BaseCommand):
                         "customer_email": data["customer_email"],
                         "shipping_address": data["shipping_address"],
                         "shipping_cost": data["shipping_cost"],
-                        "total_amount": total_amount,
+                        "total_amount": data["total_amount"],
                         "status": data["status"],
                         "carrier": data["carrier"],
                     }
@@ -218,30 +162,43 @@ class Command(BaseCommand):
                 if created:
                     created_count += 1
                 else:
-                    # Update fields if already exists
                     order.customer_name = data["customer_name"]
                     order.customer_phone = data["customer_phone"]
                     order.customer_email = data["customer_email"]
                     order.shipping_address = data["shipping_address"]
                     order.shipping_cost = data["shipping_cost"]
-                    order.total_amount = total_amount
+                    order.total_amount = data["total_amount"]
                     order.status = data["status"]
                     order.carrier = data["carrier"]
                     order.save()
                     updated_count += 1
 
-                # Recreate items
+                # Recreate line items
                 OrderItem.objects.filter(order=order).delete()
-                for ri in resolved_items:
+                for it in data["items"]:
+                    prod = Product.objects.filter(slug=it["slug"]).first()
+                    if not prod:
+                        prod = Product.objects.filter(id=it["slug"]).first()
+                    if not prod:
+                        prod = Product.objects.filter(name__iexact=it["name"]).first()
+
+                    bundle_items = []
+                    if prod and prod.is_grouped:
+                        bundle_items = [
+                            {"name": gi.child.name, "quantity": gi.quantity}
+                            for gi in prod.group_items.select_related('child')
+                        ]
+
                     OrderItem.objects.create(
                         order=order,
-                        product=ri["product"],
-                        product_name=ri["name"],
-                        price=ri["price"],
-                        quantity=ri["quantity"],
-                        bundle_items=ri["bundle_items"],
+                        product=prod,
+                        product_name=it["name"],
+                        price=it["price"],
+                        quantity=it["quantity"],
+                        bundle_items=bundle_items,
+                        is_preorder=False,
                     )
 
-                self.stdout.write(self.style.SUCCESS(f"  ✓ Processed Order #{order_num} ({order.customer_name}) - ৳{total_amount:,.2f}"))
+                self.stdout.write(self.style.SUCCESS(f"  ✓ Seeded Order #{order_num} ({order.customer_name}) - ৳{order.total_amount}"))
 
-        self.stdout.write(self.style.SUCCESS(f"\n==> Done! Created: {created_count}, Updated: {updated_count} order(s)."))
+        self.stdout.write(self.style.SUCCESS(f"\n==> Successfully seeded all {created_count + updated_count} orders!"))
