@@ -277,3 +277,43 @@ def deduct_stock(product, qty):
     if locked.stock is not None:
         locked.stock = max(0, locked.stock - qty)
         locked.save(update_fields=['stock'])
+
+
+def restock_product(product, qty, bundle_items=None):
+    """Restores stock for `qty` units of `product` when an order is cancelled.
+    If product is grouped, restores stock for each child product.
+    If product is simple, restores stock directly.
+    """
+    if not product or qty <= 0:
+        return
+
+    if product.is_grouped:
+        # If saved bundle_items is passed (from OrderItem snapshot), use child names / IDs
+        if bundle_items and isinstance(bundle_items, list) and len(bundle_items) > 0:
+            for bi in bundle_items:
+                bi_qty = int(bi.get('quantity', 1))
+                bi_name = bi.get('name')
+                child = Product.objects.filter(name=bi_name).first() if bi_name else None
+                if child and child.stock is not None:
+                    locked_child = Product.objects.select_for_update().get(pk=child.pk)
+                    locked_child.stock = (locked_child.stock or 0) + (bi_qty * qty)
+                    locked_child.save(update_fields=['stock'])
+            return
+
+        items = list(product.group_items.select_related('child'))
+        if items:
+            locked = {
+                p.id: p
+                for p in Product.objects.select_for_update().filter(id__in=[i.child_id for i in items])
+            }
+            for item in items:
+                if item.child_id in locked:
+                    child = locked[item.child_id]
+                    child.stock = (child.stock or 0) + (item.quantity * qty)
+                    child.save(update_fields=['stock'])
+            return
+
+    locked = Product.objects.select_for_update().get(pk=product.pk)
+    if locked.stock is not None:
+        locked.stock = (locked.stock or 0) + qty
+        locked.save(update_fields=['stock'])

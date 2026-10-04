@@ -218,6 +218,63 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = OrderSerializer
     lookup_field = 'id'
 
+    def update(self, request, *args, **kwargs):
+        from django.db import transaction
+        from apps.products.models import Product, restock_product, deduct_stock
+
+        order = self.get_object()
+        old_status = order.status
+        new_status = request.data.get('status', old_status)
+
+        with transaction.atomic():
+            # If transitioning to 'cancelled' from an active status -> RESTOCK!
+            if new_status == 'cancelled' and old_status != 'cancelled':
+                for item in order.items.all():
+                    if not item.is_preorder:
+                        prod = item.product
+                        if not prod and getattr(item, 'product_id', None):
+                            prod = Product.objects.filter(id=item.product_id).first()
+                        if not prod and item.product_name:
+                            prod = Product.objects.filter(name=item.product_name).first()
+                        if prod:
+                            restock_product(prod, item.quantity, bundle_items=item.bundle_items)
+
+            # If transitioning from 'cancelled' back to an active status -> DEDUCT STOCK!
+            elif old_status == 'cancelled' and new_status != 'cancelled':
+                for item in order.items.all():
+                    if not item.is_preorder:
+                        prod = item.product
+                        if not prod and getattr(item, 'product_id', None):
+                            prod = Product.objects.filter(id=item.product_id).first()
+                        if not prod and item.product_name:
+                            prod = Product.objects.filter(name=item.product_name).first()
+                        if prod:
+                            try:
+                                deduct_stock(prod, item.quantity)
+                            except Exception:
+                                pass
+
+            response = super().update(request, *args, **kwargs)
+            return response
+
+    def perform_destroy(self, instance):
+        from django.db import transaction
+        from apps.products.models import Product, restock_product
+
+        with transaction.atomic():
+            # If deleting an active (non-cancelled) order, restore stock to catalog
+            if instance.status != 'cancelled':
+                for item in instance.items.all():
+                    if not item.is_preorder:
+                        prod = item.product
+                        if not prod and getattr(item, 'product_id', None):
+                            prod = Product.objects.filter(id=item.product_id).first()
+                        if not prod and item.product_name:
+                            prod = Product.objects.filter(name=item.product_name).first()
+                        if prod:
+                            restock_product(prod, item.quantity, bundle_items=item.bundle_items)
+            instance.delete()
+
 
 class AdminDashboardStatsView(APIView):
     def get(self, request):
