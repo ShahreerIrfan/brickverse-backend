@@ -117,23 +117,33 @@ class OrderListView(APIView):
         import uuid
         data = request.data
         customer_name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or data.get('customer_name', 'Valued Customer')
-        customer_email = data.get('customer_email') or data.get('email', 'guest@kawaiisubete.com')
+        customer_email = data.get('customer_email') or data.get('email') or 'guest@kawaiisubete.com'
         customer_phone = data.get('customer_phone') or data.get('phone', '')
         district_val = str(data.get('district') or data.get('city') or '').strip()
         shipping_address = f"{data.get('address', '')}, {district_val}".strip(', ') or data.get('shipping_address', 'Dhaka, Bangladesh')
         
-        # Delivery charge policy: ৳60 inside Dhaka, ৳120 for all other 63 districts.
-        # Delivery is never free (no free shipping threshold for >= ৳500).
+        # Delivery charge policy: ৳60 inside Dhaka, ৳120 for all other 63 districts unless explicitly specified.
         is_dhaka = district_val.lower() == 'dhaka' or 'dhaka' in shipping_address.lower()
         default_shipping = 60.0 if is_dhaka else 120.0
         try:
-            passed_cost = float(data.get('shipping_cost', default_shipping))
-            shipping_cost = passed_cost if passed_cost in (60.0, 120.0) else default_shipping
+            if 'shipping_cost' in data and data.get('shipping_cost') is not None:
+                shipping_cost = max(0.0, float(data.get('shipping_cost')))
+            else:
+                shipping_cost = default_shipping
         except (ValueError, TypeError):
             shipping_cost = default_shipping
 
         total_amount = float(data.get('total_amount', 0))
-        order_number = f"KS-{uuid.uuid4().hex[:6].upper()}"
+        custom_order_number = str(data.get('order_number') or '').strip()
+        order_number = custom_order_number if custom_order_number else f"KS-{uuid.uuid4().hex[:6].upper()}"
+
+        status_val = str(data.get('status') or 'pending').strip().lower()
+        valid_statuses = [s[0] for s in Order.STATUS_CHOICES]
+        if status_val not in valid_statuses:
+            status_val = 'pending'
+
+        carrier_val = data.get('carrier') or 'Steadfast Courier (COD)'
+        tracking_val = data.get('tracking_number') or ''
 
         from django.db import transaction
         from apps.products.models import Product, InsufficientStock, deduct_stock
@@ -151,8 +161,9 @@ class OrderListView(APIView):
                     shipping_address=shipping_address,
                     total_amount=total_amount,
                     shipping_cost=shipping_cost,
-                    status='pending',
-                    carrier='Steadfast Courier (COD)'
+                    status=status_val,
+                    carrier=carrier_val,
+                    tracking_number=tracking_val
                 )
 
                 for item in data.get('items', []):
@@ -176,6 +187,8 @@ class OrderListView(APIView):
 
                     # A simple product with no stock is taken as a pre-order.
                     is_preorder = bool(prod and not prod.is_grouped and (prod.stock or 0) <= 0)
+                    if 'isPreorder' in item:
+                        is_preorder = bool(item.get('isPreorder'))
 
                     OrderItem.objects.create(
                         order=order,
@@ -187,8 +200,13 @@ class OrderListView(APIView):
                         is_preorder=is_preorder,
                     )
 
-                    if prod and not is_preorder:
-                        deduct_stock(prod, qty)
+                    should_deduct = item.get('deduct_stock', True) and not is_preorder
+                    if prod and should_deduct:
+                        try:
+                            deduct_stock(prod, qty)
+                        except InsufficientStock:
+                            if not item.get('allow_preorder_fallback', True):
+                                raise
         except InsufficientStock as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
