@@ -60,10 +60,26 @@ class OrderItemSerializer(serializers.ModelSerializer):
     productId = serializers.SerializerMethodField()
     bundleItems = serializers.JSONField(source='bundle_items', read_only=True)
     isPreorder = serializers.BooleanField(source='is_preorder', read_only=True)
+    is_preorder = serializers.BooleanField(read_only=True)
+    originalPrice = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'productId', 'product_name', 'price', 'quantity', 'image', 'sku', 'slug', 'bundleItems', 'isPreorder']
+        fields = [
+            'id',
+            'product',
+            'productId',
+            'product_name',
+            'price',
+            'quantity',
+            'image',
+            'sku',
+            'slug',
+            'bundleItems',
+            'isPreorder',
+            'is_preorder',
+            'originalPrice',
+        ]
 
     def _get_product_instance(self, obj):
         prod = obj.product
@@ -92,6 +108,21 @@ class OrderItemSerializer(serializers.ModelSerializer):
         if prod and getattr(prod, 'slug', None):
             return prod.slug
         return str(obj.product_id) if obj.product_id else ""
+
+    def get_originalPrice(self, obj):
+        prod = self._get_product_instance(obj)
+        if prod:
+            for field in ['regular_price', 'original_price']:
+                val_str = getattr(prod, field, None)
+                if val_str:
+                    try:
+                        import re
+                        num = float(re.sub(r'[^\d.]', '', str(val_str)))
+                        if num > float(obj.price):
+                            return num
+                    except Exception:
+                        pass
+        return None
 
     def get_image(self, obj):
         prod = self._get_product_instance(obj)
@@ -126,6 +157,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     shipping_cost = serializers.SerializerMethodField()
+    discount = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -138,6 +170,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'shipping_address',
             'total_amount',
             'shipping_cost',
+            'discount',
             'status',
             'tracking_number',
             'carrier',
@@ -158,3 +191,15 @@ class OrderSerializer(serializers.ModelSerializer):
             pass
         addr = (obj.shipping_address or "").lower()
         return 60.0 if "dhaka" in addr else 120.0
+
+    def get_discount(self, obj):
+        try:
+            items_total = sum(float(item.price) * item.quantity for item in obj.items.all())
+            ship_cost = self.get_shipping_cost(obj)
+            total = float(obj.total_amount)
+            diff = (items_total + ship_cost) - total
+            if diff > 0.01:
+                return round(diff, 2)
+        except Exception:
+            pass
+        return 0.0

@@ -11,7 +11,7 @@ RECOVERED_ORDERS_DATA = [
         "customer_email": "shfhasanfarabi22@gmail.com",
         "shipping_address": "147/21/1 South pirerbag, 60 feet road, Dhaka , Dhaka",
         "shipping_cost": 60.00,
-        "total_amount": 360.00,
+        "total_amount": 330.00,
         "status": "processing",
         "carrier": "Steadfast Courier (COD)",
         "items": [
@@ -20,6 +20,7 @@ RECOVERED_ORDERS_DATA = [
                 "name": "Red Pirate Ship Building Blocks Set – Caribbean Series Display Ship Model (A5)",
                 "quantity": 1,
                 "price": 300.00,
+                "is_preorder": False,
             }
         ]
     },
@@ -39,6 +40,7 @@ RECOVERED_ORDERS_DATA = [
                 "name": "Black Pirate Ship Building Blocks Set – Caribbean Series Display Ship Model (A1)",
                 "quantity": 1,
                 "price": 300.00,
+                "is_preorder": False,
             }
         ]
     },
@@ -58,18 +60,21 @@ RECOVERED_ORDERS_DATA = [
                 "name": "Windmill Cottage Building Blocks Set – Red Architecture House Model (MZ-216)",
                 "quantity": 1,
                 "price": 350.00,
+                "is_preorder": True,
             },
             {
                 "slug": "ice-cream-vending-cart-building-blocks-set-cute-dessert-cart-diy-model-no-k400",
                 "name": "Ice Cream Vending Cart Building Blocks Set – Cute Dessert Cart DIY Model (NO. K400)",
                 "quantity": 1,
                 "price": 350.00,
+                "is_preorder": False,
             },
             {
                 "slug": "windmill-cottage-building-blocks-set-blue-architecture-house-model-mz-215",
                 "name": "Windmill Cottage Building Blocks Set – Blue Architecture House Model (MZ-215)",
                 "quantity": 1,
                 "price": 350.00,
+                "is_preorder": False,
             }
         ]
     },
@@ -80,7 +85,7 @@ RECOVERED_ORDERS_DATA = [
         "customer_email": "sarah251071066@gmail.com",
         "shipping_address": "House 44, road 13, sector 12, uttara dhaka, Dhaka",
         "shipping_cost": 60.00,
-        "total_amount": 410.00,
+        "total_amount": 375.00,
         "status": "pending",
         "carrier": "Steadfast Courier (COD)",
         "items": [
@@ -89,6 +94,7 @@ RECOVERED_ORDERS_DATA = [
                 "name": "Demon Slayer PalVerse Chibi Action Figures – Giyu Tomioka",
                 "quantity": 1,
                 "price": 350.00,
+                "is_preorder": True,
             }
         ]
     },
@@ -108,6 +114,7 @@ RECOVERED_ORDERS_DATA = [
                 "name": "One Piece BRICKS Set",
                 "quantity": 1,
                 "price": 1200.00,
+                "is_preorder": False,
             }
         ]
     },
@@ -127,6 +134,7 @@ RECOVERED_ORDERS_DATA = [
                 "name": "Black Pirate Ship Building Blocks Set – Caribbean Series Display Ship Model (A1)",
                 "quantity": 1,
                 "price": 1450.00,
+                "is_preorder": False,
             }
         ]
     }
@@ -196,9 +204,9 @@ class Command(BaseCommand):
                         price=it["price"],
                         quantity=it["quantity"],
                         bundle_items=bundle_items,
-                        is_preorder=False,
+                        is_preorder=it.get("is_preorder", False),
                     )
 
-                self.stdout.write(self.style.SUCCESS(f"  ✓ Seeded Order #{order_num} ({order.customer_name}) - ৳{order.total_amount}"))
+                self.stdout.write(self.style.SUCCESS(f"  [OK] Seeded Order #{order_num} ({order.customer_name}) - Tk {order.total_amount}"))
 
         self.stdout.write(self.style.SUCCESS(f"\n==> Successfully seeded all {created_count + updated_count} orders!"))

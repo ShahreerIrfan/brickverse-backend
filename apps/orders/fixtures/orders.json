@@ -9,7 +9,7 @@
       "customer_phone": "01885012515",
       "shipping_address": "147/21/1 South pirerbag, 60 feet road, Dhaka , Dhaka",
       "shipping_cost": "60.00",
-      "total_amount": "360.00",
+      "total_amount": "330.00",
       "status": "processing",
       "carrier": "Steadfast Courier (COD)",
       "tracking_number": "",
@@ -86,7 +86,7 @@
       "price": "350.00",
       "quantity": 1,
       "bundle_items": [],
-      "is_preorder": false
+      "is_preorder": true
     }
   },
   {
@@ -125,7 +125,7 @@
       "customer_phone": "01757232943",
       "shipping_address": "House 44, road 13, sector 12, uttara dhaka, Dhaka",
       "shipping_cost": "60.00",
-      "total_amount": "410.00",
+      "total_amount": "375.00",
       "status": "pending",
       "carrier": "Steadfast Courier (COD)",
       "tracking_number": "",
@@ -140,6 +140,66 @@
       "product": "demon-slayer-palverse-chibi-action-figures-giyu-tomioka",
       "product_name": "Demon Slayer PalVerse Chibi Action Figures – Giyu Tomioka",
       "price": "350.00",
+      "quantity": 1,
+      "bundle_items": [],
+      "is_preorder": true
+    }
+  },
+  {
+    "model": "orders.order",
+    "pk": 105,
+    "fields": {
+      "order_number": "KS-1793DA",
+      "customer_name": "MD Shahreer Irfan",
+      "customer_email": "mdshahreerirfan@gmail.com",
+      "customer_phone": "01755074517",
+      "shipping_address": "Kachua, Chandpur (Source: Facebook Page)",
+      "shipping_cost": "120.00",
+      "total_amount": "1320.00",
+      "status": "cancelled",
+      "carrier": "Steadfast Courier (COD)",
+      "tracking_number": "",
+      "created_at": "2026-10-02T10:00:00Z"
+    }
+  },
+  {
+    "model": "orders.orderitem",
+    "pk": 207,
+    "fields": {
+      "order": 105,
+      "product": "one-piece-bricks-set",
+      "product_name": "One Piece BRICKS Set",
+      "price": "1200.00",
+      "quantity": 1,
+      "bundle_items": [],
+      "is_preorder": false
+    }
+  },
+  {
+    "model": "orders.order",
+    "pk": 106,
+    "fields": {
+      "order_number": "KS-DC5848",
+      "customer_name": "MD Irfan",
+      "customer_email": "mdshahreerirfan@gmail.com",
+      "customer_phone": "01344260216",
+      "shipping_address": "Niketan Bazar, (Beside Lucky Khan Mosjid), Banani, Dhaka-1212., Dhaka",
+      "shipping_cost": "60.00",
+      "total_amount": "1510.00",
+      "status": "cancelled",
+      "carrier": "Steadfast Courier (COD)",
+      "tracking_number": "",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  },
+  {
+    "model": "orders.orderitem",
+    "pk": 208,
+    "fields": {
+      "order": 106,
+      "product": "black-pirate-ship-building-blocks-set-caribbean-series-display-ship-model-a1",
+      "product_name": "Black Pirate Ship Building Blocks Set – Caribbean Series Display Ship Model (A1)",
+      "price": "1450.00",
       "quantity": 1,
       "bundle_items": [],
       "is_preorder": false
