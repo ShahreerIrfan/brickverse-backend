@@ -147,6 +147,7 @@ class OrderListView(APIView):
 
         from django.db import transaction
         from apps.products.models import Product, InsufficientStock, deduct_stock
+        from django.utils.text import slugify
 
         # Everything below is one transaction: if any grouped product can't be
         # fulfilled (a child ran short), the order and every deduction made so
@@ -167,8 +168,21 @@ class OrderListView(APIView):
                 )
 
                 for item in data.get('items', []):
-                    prod_id = item.get('productId') or item.get('id') or item.get('product_id')
-                    prod = Product.objects.filter(id=prod_id).first() if prod_id else None
+                    prod_id = str(item.get('productId') or item.get('id') or item.get('product_id') or item.get('product') or '').strip()
+                    item_name = str(item.get('name') or item.get('product_name') or '').strip()
+                    prod = None
+
+                    if prod_id:
+                        prod = Product.objects.filter(id=prod_id).first()
+                        if not prod:
+                            prod = Product.objects.filter(slug=prod_id).first()
+                        if not prod:
+                            prod = Product.objects.filter(sku__iexact=prod_id).first()
+
+                    if not prod and item_name:
+                        prod = Product.objects.filter(name__iexact=item_name).first()
+                        if not prod:
+                            prod = Product.objects.filter(slug=slugify(item_name)).first()
 
                     raw_price = item.get('price', 0)
                     try:
@@ -176,7 +190,7 @@ class OrderListView(APIView):
                     except Exception:
                         price_val = 0.0
 
-                    qty = int(item.get('quantity', 1))
+                    qty = max(1, int(item.get('quantity', 1)))
 
                     bundle_items = []
                     if prod and prod.is_grouped:
@@ -188,25 +202,35 @@ class OrderListView(APIView):
                     # A simple product with no stock is taken as a pre-order.
                     is_preorder = bool(prod and not prod.is_grouped and (prod.stock or 0) <= 0)
                     if 'isPreorder' in item:
-                        is_preorder = bool(item.get('isPreorder'))
+                        is_preorder = bool(item.get('isPreorder')) and (not prod or (prod.stock or 0) <= 0)
 
                     OrderItem.objects.create(
                         order=order,
                         product=prod,
-                        product_name=item.get('name', prod.name if prod else 'Product Item'),
+                        product_name=item_name or (prod.name if prod else 'Product Item'),
                         price=price_val,
                         quantity=qty,
                         bundle_items=bundle_items,
                         is_preorder=is_preorder,
                     )
 
-                    should_deduct = item.get('deduct_stock', True) and not is_preorder
-                    if prod and should_deduct:
+                    # When an order is placed (with status pending or any non-cancelled status),
+                    # immediately deduct the ordered quantity from the product stock!
+                    if prod and status_val != 'cancelled' and not is_preorder:
                         try:
                             deduct_stock(prod, qty)
                         except InsufficientStock:
                             if not item.get('allow_preorder_fallback', True):
                                 raise
+                        except Exception as e:
+                            # Fallback direct stock reduction
+                            try:
+                                locked_p = Product.objects.select_for_update().get(pk=prod.pk)
+                                if locked_p.stock is not None:
+                                    locked_p.stock = max(0, locked_p.stock - qty)
+                                    locked_p.save(update_fields=['stock'])
+                            except Exception:
+                                pass
         except InsufficientStock as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -221,6 +245,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         from django.db import transaction
         from apps.products.models import Product, restock_product, deduct_stock
+        from django.utils.text import slugify
 
         order = self.get_object()
         old_status = order.status
@@ -235,7 +260,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                         if not prod and getattr(item, 'product_id', None):
                             prod = Product.objects.filter(id=item.product_id).first()
                         if not prod and item.product_name:
-                            prod = Product.objects.filter(name=item.product_name).first()
+                            prod = Product.objects.filter(name__iexact=item.product_name).first() or Product.objects.filter(slug=slugify(item.product_name)).first()
                         if prod:
                             restock_product(prod, item.quantity, bundle_items=item.bundle_items)
 
@@ -247,7 +272,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                         if not prod and getattr(item, 'product_id', None):
                             prod = Product.objects.filter(id=item.product_id).first()
                         if not prod and item.product_name:
-                            prod = Product.objects.filter(name=item.product_name).first()
+                            prod = Product.objects.filter(name__iexact=item.product_name).first() or Product.objects.filter(slug=slugify(item.product_name)).first()
                         if prod:
                             try:
                                 deduct_stock(prod, item.quantity)
@@ -260,6 +285,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
     def perform_destroy(self, instance):
         from django.db import transaction
         from apps.products.models import Product, restock_product
+        from django.utils.text import slugify
 
         with transaction.atomic():
             # If deleting an active (non-cancelled) order, restore stock to catalog
@@ -270,7 +296,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                         if not prod and getattr(item, 'product_id', None):
                             prod = Product.objects.filter(id=item.product_id).first()
                         if not prod and item.product_name:
-                            prod = Product.objects.filter(name=item.product_name).first()
+                            prod = Product.objects.filter(name__iexact=item.product_name).first() or Product.objects.filter(slug=slugify(item.product_name)).first()
                         if prod:
                             restock_product(prod, item.quantity, bundle_items=item.bundle_items)
             instance.delete()
