@@ -248,8 +248,9 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
         from django.utils.text import slugify
 
         order = self.get_object()
-        old_status = order.status
-        new_status = request.data.get('status', old_status)
+        old_status = str(order.status or '').strip().lower()
+        raw_new_status = request.data.get('status', old_status)
+        new_status = str(raw_new_status or '').strip().lower()
 
         with transaction.atomic():
             # If transitioning to 'cancelled' from an active status -> RESTOCK!
@@ -289,7 +290,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
         with transaction.atomic():
             # If deleting an active (non-cancelled) order, restore stock to catalog
-            if instance.status != 'cancelled':
+            if str(instance.status or '').strip().lower() != 'cancelled':
                 for item in instance.items.all():
                     if not item.is_preorder:
                         prod = item.product
