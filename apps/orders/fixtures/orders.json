@@ -1,0 +1,148 @@
+[
+  {
+    "model": "orders.order",
+    "pk": 101,
+    "fields": {
+      "order_number": "KS-DAE793",
+      "customer_name": "Sabit Hasan Farabi",
+      "customer_email": "shfhasanfarabi22@gmail.com",
+      "customer_phone": "01885012515",
+      "shipping_address": "147/21/1 South pirerbag, 60 feet road, Dhaka , Dhaka",
+      "shipping_cost": "60.00",
+      "total_amount": "360.00",
+      "status": "processing",
+      "carrier": "Steadfast Courier (COD)",
+      "tracking_number": "",
+      "created_at": "2026-10-04T06:00:00Z"
+    }
+  },
+  {
+    "model": "orders.orderitem",
+    "pk": 201,
+    "fields": {
+      "order": 101,
+      "product": "red-pirate-ship-building-blocks-set-caribbean-series-display-ship-model-a5",
+      "product_name": "Red Pirate Ship Building Blocks Set – Caribbean Series Display Ship Model (A5)",
+      "price": "300.00",
+      "quantity": 1,
+      "bundle_items": [],
+      "is_preorder": false
+    }
+  },
+  {
+    "model": "orders.order",
+    "pk": 102,
+    "fields": {
+      "order_number": "KS-D1D2EA",
+      "customer_name": "Ashraful Haque",
+      "customer_email": "01865454378@fb-customer.local",
+      "customer_phone": "01865454378",
+      "shipping_address": "Madartek shorkarpara 114/2 basaboo, Dhaka (Source: Facebook Page)",
+      "shipping_cost": "60.00",
+      "total_amount": "360.00",
+      "status": "processing",
+      "carrier": "Steadfast Courier (COD)",
+      "tracking_number": "",
+      "created_at": "2026-10-04T06:10:00Z"
+    }
+  },
+  {
+    "model": "orders.orderitem",
+    "pk": 202,
+    "fields": {
+      "order": 102,
+      "product": "black-pirate-ship-building-blocks-set-caribbean-series-display-ship-model-a1",
+      "product_name": "Black Pirate Ship Building Blocks Set – Caribbean Series Display Ship Model (A1)",
+      "price": "300.00",
+      "quantity": 1,
+      "bundle_items": [],
+      "is_preorder": false
+    }
+  },
+  {
+    "model": "orders.order",
+    "pk": 103,
+    "fields": {
+      "order_number": "KS-348BEE",
+      "customer_name": "Nusrat Sara",
+      "customer_email": "sorowarjahan59@gmail.com",
+      "customer_phone": "01752543972",
+      "shipping_address": "Sonirakra 24 ft rosulbug mosjid green tower building, kodomtali, dhaka , Dhaka",
+      "shipping_cost": "60.00",
+      "total_amount": "1110.00",
+      "status": "pending",
+      "carrier": "Steadfast Courier (COD)",
+      "tracking_number": "",
+      "created_at": "2026-10-03T14:30:00Z"
+    }
+  },
+  {
+    "model": "orders.orderitem",
+    "pk": 203,
+    "fields": {
+      "order": 103,
+      "product": "windmill-cottage-building-blocks-set-red-architecture-house-model-mz-216",
+      "product_name": "Windmill Cottage Building Blocks Set – Red Architecture House Model (MZ-216)",
+      "price": "350.00",
+      "quantity": 1,
+      "bundle_items": [],
+      "is_preorder": false
+    }
+  },
+  {
+    "model": "orders.orderitem",
+    "pk": 204,
+    "fields": {
+      "order": 103,
+      "product": "ice-cream-vending-cart-building-blocks-set-cute-dessert-cart-diy-model-no-k400",
+      "product_name": "Ice Cream Vending Cart Building Blocks Set – Cute Dessert Cart DIY Model (NO. K400)",
+      "price": "350.00",
+      "quantity": 1,
+      "bundle_items": [],
+      "is_preorder": false
+    }
+  },
+  {
+    "model": "orders.orderitem",
+    "pk": 205,
+    "fields": {
+      "order": 103,
+      "product": "windmill-cottage-building-blocks-set-blue-architecture-house-model-mz-215",
+      "product_name": "Windmill Cottage Building Blocks Set – Blue Architecture House Model (MZ-215)",
+      "price": "350.00",
+      "quantity": 1,
+      "bundle_items": [],
+      "is_preorder": false
+    }
+  },
+  {
+    "model": "orders.order",
+    "pk": 104,
+    "fields": {
+      "order_number": "KS-B0BFE8",
+      "customer_name": "Sarah Hossain",
+      "customer_email": "sarah251071066@gmail.com",
+      "customer_phone": "01757232943",
+      "shipping_address": "House 44, road 13, sector 12, uttara dhaka, Dhaka",
+      "shipping_cost": "60.00",
+      "total_amount": "410.00",
+      "status": "pending",
+      "carrier": "Steadfast Courier (COD)",
+      "tracking_number": "",
+      "created_at": "2026-10-03T16:00:00Z"
+    }
+  },
+  {
+    "model": "orders.orderitem",
+    "pk": 206,
+    "fields": {
+      "order": 104,
+      "product": "demon-slayer-palverse-chibi-action-figures-giyu-tomioka",
+      "product_name": "Demon Slayer PalVerse Chibi Action Figures – Giyu Tomioka",
+      "price": "350.00",
+      "quantity": 1,
+      "bundle_items": [],
+      "is_preorder": false
+    }
+  }
+]
