@@ -312,7 +312,7 @@ class AdminDashboardStatsView(APIView):
         from django.db.models import Sum, Avg, Count, F, ExpressionWrapper, DecimalField
 
         total_orders = Order.objects.count()
-        total_revenue = Order.objects.aggregate(total=Sum('total_amount'))['total'] or 0
+        total_revenue = Order.objects.exclude(status='cancelled').aggregate(total=Sum('total_amount'))['total'] or 0
         total_customers = CustomerUser.objects.count()
         total_users = User.objects.count()
         total_products = Product.objects.count()
@@ -332,6 +332,7 @@ class AdminDashboardStatsView(APIView):
 
         # -------------------------------------------------------------
         # Dynamic 7-Day Sales Overview Trend (This Week vs Last Week)
+        # Excludes cancelled orders so revenue reflects valid sales
         # -------------------------------------------------------------
         now = timezone.now()
         today = now.date()
@@ -346,12 +347,12 @@ class AdminDashboardStatsView(APIView):
             prev_week_date = day_date - timedelta(days=7)
 
             # This week
-            day_orders = Order.objects.filter(created_at__date=day_date)
+            day_orders = Order.objects.filter(created_at__date=day_date).exclude(status='cancelled')
             day_rev = float(day_orders.aggregate(total=Sum('total_amount'))['total'] or 0)
             total_current_7d += day_rev
 
             # Previous week
-            prev_orders = Order.objects.filter(created_at__date=prev_week_date)
+            prev_orders = Order.objects.filter(created_at__date=prev_week_date).exclude(status='cancelled')
             prev_rev = float(prev_orders.aggregate(total=Sum('total_amount'))['total'] or 0)
             total_previous_7d += prev_rev
 
@@ -371,9 +372,9 @@ class AdminDashboardStatsView(APIView):
             growth_pct = 12.4 if total_current_7d > 0 else 0.0
 
         # -------------------------------------------------------------
-        # Dynamic Top Selling Products (Aggregated from OrderItem)
+        # Dynamic Top Selling Products (Aggregated from OrderItem, excluding cancelled orders)
         # -------------------------------------------------------------
-        top_order_items = OrderItem.objects.values('product_name', 'product_id')\
+        top_order_items = OrderItem.objects.exclude(order__status='cancelled').values('product_name', 'product_id')\
             .annotate(
                 total_sold=Sum('quantity'),
                 total_revenue=Sum(ExpressionWrapper(F('price') * F('quantity'), output_field=DecimalField(max_digits=12, decimal_places=2)))
