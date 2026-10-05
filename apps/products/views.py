@@ -102,9 +102,9 @@ class HomepageSectionListView(APIView):
 
     def get(self, request):
         try:
-            limit = max(1, min(int(request.query_params.get('limit', 8)), 24))
+            limit = max(1, min(int(request.query_params.get('limit', 10)), 50))
         except ValueError:
-            limit = 8
+            limit = 10
 
         sections = []
         categories = Category.objects.filter(
