@@ -2,7 +2,7 @@ from rest_framework import generics, status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, ContactMessage, HeroSlide, Coupon
+from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, ContactMessage, HeroSlide, Coupon, PromoBanner
 from .serializers import (
     NewsletterSubscriberSerializer,
     NavLinkSerializer,
@@ -11,6 +11,7 @@ from .serializers import (
     ContactMessageSerializer,
     HeroSlideSerializer,
     CouponSerializer,
+    PromoBannerSerializer,
 )
 
 class NewsletterSubscribeView(APIView):
@@ -175,4 +176,58 @@ class CouponValidateView(APIView):
             "max_discount": float(coupon.max_discount) if coupon.max_discount else None,
             "message": f"Coupon {coupon.code} applied successfully!",
         }, status=status.HTTP_200_OK)
+
+
+class PromoBannerListView(generics.ListAPIView):
+    """Public: active promo banners only (up to 2), in display order for homepage."""
+    serializer_class = PromoBannerSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return PromoBanner.objects.filter(is_active=True).order_by('order', 'id')[:2]
+
+
+class PromoBannerAdminListView(generics.ListCreateAPIView):
+    """Admin: all promo banners with strict maximum 2 banners limit."""
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    queryset = PromoBanner.objects.all().order_by('order', 'id')
+    serializer_class = PromoBannerSerializer
+    pagination_class = None
+
+    def create(self, request, *args, **kwargs):
+        current_count = PromoBanner.objects.count()
+        if current_count >= 2:
+            return Response(
+                {"error": "Maximum 2 promo banners allowed. You can edit, reorder, or delete existing banners."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        if 'countdown_end' in data and not data['countdown_end']:
+            data['countdown_end'] = None
+        if 'countdownEnd' in data and not data['countdownEnd']:
+            data['countdownEnd'] = None
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PromoBannerDetailView(generics.RetrieveUpdateDestroyAPIView):
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    queryset = PromoBanner.objects.all()
+    serializer_class = PromoBannerSerializer
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        if 'countdown_end' in data and not data['countdown_end']:
+            data['countdown_end'] = None
+        if 'countdownEnd' in data and not data['countdownEnd']:
+            data['countdownEnd'] = None
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 

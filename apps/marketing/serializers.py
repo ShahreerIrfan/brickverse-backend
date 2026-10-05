@@ -1,5 +1,15 @@
 from rest_framework import serializers
-from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, FooterLink, ContactMessage, HeroSlide, Coupon
+from .models import (
+    NewsletterSubscriber,
+    NavLink,
+    StoreInfo,
+    FooterColumn,
+    FooterLink,
+    ContactMessage,
+    HeroSlide,
+    Coupon,
+    PromoBanner,
+)
 
 class NewsletterSubscriberSerializer(serializers.ModelSerializer):
     class Meta:
@@ -156,4 +166,72 @@ class CouponSerializer(serializers.ModelSerializer):
         if not valid:
             return msg
         return "Active"
+
+
+class PromoBannerSerializer(serializers.ModelSerializer):
+    bannerType = serializers.CharField(source='banner_type', required=False)
+    badgeText = serializers.CharField(source='badge_text', required=False, allow_blank=True)
+    highlightWord = serializers.CharField(source='highlight_word', required=False, allow_blank=True)
+    buttonText = serializers.CharField(source='button_text', required=False, allow_blank=True)
+    buttonUrl = serializers.CharField(source='button_url', required=False, allow_blank=True)
+    gradientType = serializers.CharField(source='gradient_type', required=False)
+    countdownEnd = serializers.DateTimeField(source='countdown_end', required=False, allow_null=True)
+    isActive = serializers.BooleanField(source='is_active', required=False)
+    image = serializers.SerializerMethodField()
+    image_file = serializers.FileField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = PromoBanner
+        fields = [
+            'id',
+            'banner_type',
+            'bannerType',
+            'badge_text',
+            'badgeText',
+            'title',
+            'highlight_word',
+            'highlightWord',
+            'subtitle',
+            'button_text',
+            'buttonText',
+            'button_url',
+            'buttonUrl',
+            'image',
+            'image_file',
+            'gradient_type',
+            'gradientType',
+            'countdown_end',
+            'countdownEnd',
+            'order',
+            'is_active',
+            'isActive',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_image(self, obj):
+        img = obj.image
+        if not img:
+            return None
+        try:
+            url = img.url
+        except Exception:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+    def create(self, validated_data):
+        image_file = validated_data.pop('image_file', None)
+        if image_file:
+            validated_data['image'] = image_file
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        image_file = validated_data.pop('image_file', None)
+        if image_file:
+            validated_data['image'] = image_file
+        return super().update(instance, validated_data)
 

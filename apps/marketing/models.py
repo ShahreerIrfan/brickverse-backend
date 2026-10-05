@@ -151,4 +151,37 @@ class Coupon(models.Model):
             if discount > subtotal:
                 discount = subtotal
 
-        return round(discount, 2), None
+class PromoBanner(models.Model):
+    BANNER_TYPES = [
+        ('category', 'Category Banner'),
+        ('offer', 'Offer / Deal Banner'),
+    ]
+
+    GRADIENT_TYPES = [
+        ('purple', 'Purple Gradient (Anime / Figures)'),
+        ('yellow', 'Yellow Gradient (Deals / Bricks)'),
+        ('pink', 'Pink Gradient (Kawaii / Cute)'),
+        ('blue', 'Blue Gradient (Tech / Kits)'),
+        ('dark', 'Dark Night Gradient'),
+    ]
+
+    banner_type = models.CharField(max_length=20, choices=BANNER_TYPES, default='category')
+    badge_text = models.CharField(max_length=100, default='New arrivals', help_text="Category badge or Deal type like 'Deal of the week', 'New arrivals'")
+    title = models.CharField(max_length=200)
+    highlight_word = models.CharField(max_length=100, blank=True, default='', help_text="Word in title to accent/highlight")
+    subtitle = models.CharField(max_length=300, blank=True, default='')
+    button_text = models.CharField(max_length=50, blank=True, default='Shop now')
+    button_url = models.CharField(max_length=300, blank=True, default='/shop')
+    image = models.FileField(upload_to='promo_banners/', blank=True, null=True)
+    gradient_type = models.CharField(max_length=30, choices=GRADIENT_TYPES, default='purple')
+    countdown_end = models.DateTimeField(blank=True, null=True, help_text="Expiry date and time for Deal / Offer countdown timer")
+    order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"[{self.get_banner_type_display()}] {self.title}"
