@@ -152,9 +152,8 @@ class CouponValidateView(APIView):
         code = str(raw_code).strip().upper()
         subtotal = float(request.data.get('subtotal', 0) or 0)
 
-        try:
-            coupon = Coupon.objects.get(code=code)
-        except Coupon.DoesNotExist:
+        coupon = Coupon.objects.filter(code__iexact=code).first()
+        if not coupon:
             return Response({"valid": False, "error": f'Coupon code "{code}" not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         is_valid, reason = coupon.is_valid_now()

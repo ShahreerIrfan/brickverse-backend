@@ -151,6 +151,8 @@ class Coupon(models.Model):
             if discount > subtotal:
                 discount = subtotal
 
+        return round(discount, 2), None
+
 class PromoBanner(models.Model):
     BANNER_TYPES = [
         ('category', 'Category Banner'),

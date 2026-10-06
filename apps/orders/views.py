@@ -234,6 +234,16 @@ class OrderListView(APIView):
         except InsufficientStock as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Increment coupon times_used if a valid coupon was applied to this order
+        coupon_code = data.get('coupon_code') or data.get('discount_code') or data.get('coupon')
+        if coupon_code:
+            try:
+                from apps.marketing.models import Coupon
+                from django.db.models import F
+                Coupon.objects.filter(code__iexact=str(coupon_code).strip()).update(times_used=F('times_used') + 1)
+            except Exception:
+                pass
+
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
 
