@@ -1,7 +1,8 @@
 import uuid
-from rest_framework import generics, status
+from rest_framework import generics, status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from apps.users.permissions import IsAdminRole
 from .models import TrustPerk, Cart, CartItem, WishlistItem, Order, OrderItem
 from .serializers import (
     TrustPerkSerializer,
@@ -103,12 +104,25 @@ class OrderTrackView(APIView):
 
 
 class OrderListView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def get(self, request):
+        user = request.user
         email = request.query_params.get('email')
+
+        is_admin = bool(user and user.is_authenticated and (getattr(user, 'is_admin_role', False) or user.is_staff or user.is_superuser))
         queryset = Order.objects.all().prefetch_related('items')
 
-        if email:
-            queryset = queryset.filter(customer_email__iexact=email)
+        if is_admin:
+            if email:
+                queryset = queryset.filter(customer_email__iexact=email.strip())
+        elif user and user.is_authenticated:
+            queryset = queryset.filter(customer_email__iexact=user.email)
+        elif email:
+            queryset = queryset.filter(customer_email__iexact=email.strip())
+        else:
+            # Anonymous query without email or authentication returns empty list to prevent IDOR / PII exposure
+            return Response([])
 
         serializer = OrderSerializer(queryset, many=True)
         return Response(serializer.data)
@@ -133,7 +147,6 @@ class OrderListView(APIView):
         except (ValueError, TypeError):
             shipping_cost = default_shipping
 
-        total_amount = float(data.get('total_amount', 0))
         custom_order_number = str(data.get('order_number') or '').strip()
         order_number = custom_order_number if custom_order_number else f"KS-{uuid.uuid4().hex[:6].upper()}"
 
@@ -148,6 +161,88 @@ class OrderListView(APIView):
         from django.db import transaction
         from apps.products.models import Product, InsufficientStock, deduct_stock
         from django.utils.text import slugify
+
+        # Server-side price recalculation and verification to prevent price tampering
+        calculated_subtotal = 0.0
+        items_payload = data.get('items', [])
+        resolved_items = []
+
+        for item in items_payload:
+            prod_id = str(item.get('productId') or item.get('id') or item.get('product_id') or item.get('product') or '').strip()
+            item_name = str(item.get('name') or item.get('product_name') or '').strip()
+            prod = None
+
+            if prod_id:
+                prod = Product.objects.filter(id=prod_id).first()
+                if not prod:
+                    prod = Product.objects.filter(slug=prod_id).first()
+                if not prod:
+                    prod = Product.objects.filter(sku__iexact=prod_id).first()
+
+            if not prod and item_name:
+                prod = Product.objects.filter(name__iexact=item_name).first()
+                if not prod:
+                    prod = Product.objects.filter(slug=slugify(item_name)).first()
+
+            raw_price = item.get('price', 0)
+            try:
+                price_val = float(str(raw_price).replace('৳', '').replace('$', '').replace(',', '').strip() or 0)
+            except Exception:
+                price_val = 0.0
+
+            # Override with authoritative catalog price if product exists in database
+            if prod:
+                raw_catalog = prod.discounted_price or prod.price or prod.regular_price or '0'
+                try:
+                    cat_val = float(str(raw_catalog).replace('৳', '').replace('$', '').replace(',', '').strip() or 0)
+                    if cat_val > 0:
+                        price_val = cat_val
+                except Exception:
+                    pass
+
+            qty = max(1, int(item.get('quantity', 1)))
+            calculated_subtotal += (price_val * qty)
+
+            bundle_items = []
+            if prod and prod.is_grouped:
+                bundle_items = [
+                    {"name": gi.child.name, "quantity": gi.quantity}
+                    for gi in prod.group_items.select_related('child')
+                ]
+
+            is_preorder = bool(prod and not prod.is_grouped and (prod.stock or 0) <= 0)
+            if 'isPreorder' in item:
+                is_preorder = bool(item.get('isPreorder')) and (not prod or (prod.stock or 0) <= 0)
+
+            resolved_items.append({
+                "prod": prod,
+                "item_name": item_name or (prod.name if prod else 'Product Item'),
+                "price_val": price_val,
+                "qty": qty,
+                "bundle_items": bundle_items,
+                "is_preorder": is_preorder,
+                "allow_preorder_fallback": item.get('allow_preorder_fallback', True),
+            })
+
+        # Calculate authoritative coupon discount if coupon is applied
+        discount_amount = 0.0
+        coupon_code = data.get('coupon_code') or data.get('discount_code') or data.get('coupon')
+        if coupon_code:
+            try:
+                from apps.marketing.models import Coupon
+                coupon_obj = Coupon.objects.filter(code__iexact=str(coupon_code).strip()).first()
+                if coupon_obj:
+                    is_valid, _ = coupon_obj.is_valid_now()
+                    if is_valid:
+                        disc, _ = coupon_obj.calculate_discount(calculated_subtotal)
+                        discount_amount = disc
+            except Exception:
+                pass
+
+        if calculated_subtotal > 0:
+            total_amount = max(0.0, (calculated_subtotal - discount_amount)) + shipping_cost
+        else:
+            total_amount = max(0.0, float(data.get('total_amount') or 0))
 
         # Everything below is one transaction: if any grouped product can't be
         # fulfilled (a child ran short), the order and every deduction made so
@@ -167,50 +262,18 @@ class OrderListView(APIView):
                     tracking_number=tracking_val
                 )
 
-                for item in data.get('items', []):
-                    prod_id = str(item.get('productId') or item.get('id') or item.get('product_id') or item.get('product') or '').strip()
-                    item_name = str(item.get('name') or item.get('product_name') or '').strip()
-                    prod = None
-
-                    if prod_id:
-                        prod = Product.objects.filter(id=prod_id).first()
-                        if not prod:
-                            prod = Product.objects.filter(slug=prod_id).first()
-                        if not prod:
-                            prod = Product.objects.filter(sku__iexact=prod_id).first()
-
-                    if not prod and item_name:
-                        prod = Product.objects.filter(name__iexact=item_name).first()
-                        if not prod:
-                            prod = Product.objects.filter(slug=slugify(item_name)).first()
-
-                    raw_price = item.get('price', 0)
-                    try:
-                        price_val = float(str(raw_price).replace('৳', '').replace('$', '').replace(',', '').strip() or 0)
-                    except Exception:
-                        price_val = 0.0
-
-                    qty = max(1, int(item.get('quantity', 1)))
-
-                    bundle_items = []
-                    if prod and prod.is_grouped:
-                        bundle_items = [
-                            {"name": gi.child.name, "quantity": gi.quantity}
-                            for gi in prod.group_items.select_related('child')
-                        ]
-
-                    # A simple product with no stock is taken as a pre-order.
-                    is_preorder = bool(prod and not prod.is_grouped and (prod.stock or 0) <= 0)
-                    if 'isPreorder' in item:
-                        is_preorder = bool(item.get('isPreorder')) and (not prod or (prod.stock or 0) <= 0)
+                for r_item in resolved_items:
+                    prod = r_item["prod"]
+                    qty = r_item["qty"]
+                    is_preorder = r_item["is_preorder"]
 
                     OrderItem.objects.create(
                         order=order,
                         product=prod,
-                        product_name=item_name or (prod.name if prod else 'Product Item'),
-                        price=price_val,
+                        product_name=r_item["item_name"],
+                        price=r_item["price_val"],
                         quantity=qty,
-                        bundle_items=bundle_items,
+                        bundle_items=r_item["bundle_items"],
                         is_preorder=is_preorder,
                     )
 
@@ -220,7 +283,7 @@ class OrderListView(APIView):
                         try:
                             deduct_stock(prod, qty)
                         except InsufficientStock:
-                            if not item.get('allow_preorder_fallback', True):
+                            if not r_item["allow_preorder_fallback"]:
                                 raise
                         except Exception as e:
                             # Fallback direct stock reduction
@@ -251,6 +314,27 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Order.objects.all().prefetch_related('items')
     serializer_class = OrderSerializer
     lookup_field = 'id'
+
+    def get_permissions(self):
+        if self.request.method in ('PUT', 'PATCH', 'DELETE'):
+            return [IsAdminRole()]
+        return [permissions.AllowAny()]
+
+    def get_object(self):
+        obj = super().get_object()
+        user = self.request.user
+        if self.request.method == 'GET':
+            is_admin = bool(user and user.is_authenticated and (getattr(user, 'is_admin_role', False) or user.is_staff or user.is_superuser))
+            if is_admin:
+                return obj
+            if user and user.is_authenticated and obj.customer_email and obj.customer_email.lower() == user.email.lower():
+                return obj
+            email_param = self.request.query_params.get('email', '').strip().lower()
+            if email_param and obj.customer_email and obj.customer_email.lower() == email_param:
+                return obj
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You do not have permission to view this order.")
+        return obj
 
     def update(self, request, *args, **kwargs):
         from django.db import transaction
@@ -314,6 +398,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class AdminDashboardStatsView(APIView):
+    permission_classes = [IsAdminRole]
     def get(self, request):
         from datetime import timedelta
         from django.utils import timezone

@@ -5,9 +5,11 @@ from django.db.models import Sum, Count
 from django.utils import timezone
 from .models import Expense, EPENSE_LIST_CHOICES
 from .serializers import ExpenseSerializer
+from apps.users.permissions import IsAdminRole
 
 class ExpenseListCreateView(generics.ListCreateAPIView):
     """List all expenses or create a new expense."""
+    permission_classes = [IsAdminRole]
     serializer_class = ExpenseSerializer
     pagination_class = None
 
@@ -35,12 +37,14 @@ class ExpenseListCreateView(generics.ListCreateAPIView):
 
 class ExpenseDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Retrieve, update, or delete a single expense."""
+    permission_classes = [IsAdminRole]
     queryset = Expense.objects.all()
     serializer_class = ExpenseSerializer
 
 
 class ExpenseCategoryChoicesView(APIView):
     """Return available expense category choices for dropdowns."""
+    permission_classes = [IsAdminRole]
     def get(self, request):
         choices = [{"value": val, "label": label} for val, label in EPENSE_LIST_CHOICES]
         return Response(choices)
@@ -48,6 +52,7 @@ class ExpenseCategoryChoicesView(APIView):
 
 class ExpenseSummaryView(APIView):
     """Return aggregate statistics for expenses (Total, Monthly, Category Breakdown)."""
+    permission_classes = [IsAdminRole]
     def get(self, request):
         now = timezone.now()
         this_month_start = now.date().replace(day=1)

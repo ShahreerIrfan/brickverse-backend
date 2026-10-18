@@ -8,9 +8,11 @@ from django.db.models import Q, Avg, Count
 from .models import SystemLog
 from .serializers import SystemLogSerializer
 from .buffer import get_buffer_logs, clear_buffer, add_to_buffer, SERVER_START_TIME
+from apps.users.permissions import IsAdminRole
 
 
 class SystemLogListView(APIView):
+    permission_classes = [IsAdminRole]
     def get(self, request):
         level = request.query_params.get('level')
         search = request.query_params.get('search')
@@ -133,6 +135,7 @@ class SystemLogListView(APIView):
 
 
 class ClearLogsView(APIView):
+    permission_classes = [IsAdminRole]
     def post(self, request):
         try:
             SystemLog.objects.all().delete()
@@ -143,6 +146,7 @@ class ClearLogsView(APIView):
 
 
 class GenerateTestLogView(APIView):
+    permission_classes = [IsAdminRole]
     def post(self, request):
         level = request.data.get('level', 'INFO').upper()
         msg = request.data.get('message', f"Test {level} log triggered from Admin Dashboard")
@@ -213,6 +217,7 @@ def auto_prune_expired_logs():
 
 
 class LogRetentionView(APIView):
+    permission_classes = [IsAdminRole]
     def get(self, request):
         from .models import LogRetentionSetting
         setting = LogRetentionSetting.get_setting()
@@ -254,6 +259,7 @@ class LogRetentionView(APIView):
 
 
 class PruneLogsView(APIView):
+    permission_classes = [IsAdminRole]
     def post(self, request):
         days = request.data.get('days')
         from datetime import timedelta

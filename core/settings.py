@@ -24,7 +24,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-3owhio85m_aumhz+^v(#g-%2sf
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 't')
 
-raw_allowed_hosts = os.getenv('ALLOWED_HOSTS', '*')
+raw_allowed_hosts = os.getenv('ALLOWED_HOSTS', 'kawaiisubete.com,www.kawaiisubete.com,api.kawaiisubete.com,brickbackend.eezzymart.tech,brickverse.eezzymart.tech,localhost,127.0.0.1')
 ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(',') if h.strip()]
 
 
@@ -74,7 +74,7 @@ MIDDLEWARE = [
 ]
 
 # CORS and CSRF Configuration
-CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'True').lower() in ('true', '1', 't')
+CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower() in ('true', '1', 't')
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
@@ -111,10 +111,27 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 # Reverse proxy SSL header (Traefik / Nginx / Dokploy)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# Security Headers & Cookie Policies
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SESSION_COOKIE_AGE = 86400  # 24 hours session lifetime
+SESSION_COOKIE_HTTPONLY = True
+
+# Content Security Policy (CSP) Directives
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "https://www.google-analytics.com")
+CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com")
+CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "data:")
+CSP_IMG_SRC = ("'self'", "data:", "https:", "http:")
+CSP_CONNECT_SRC = ("'self'", "https://kawaiisubete.com", "https://api.kawaiisubete.com", "https://brickverse.eezzymart.tech", "http://localhost:3000")
+
 if not DEBUG:
-    SESSION_COOKIE_SAMESITE = 'None'
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
     SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SAMESITE = 'Lax'
     CSRF_COOKIE_SECURE = True
 
 REST_FRAMEWORK = {
@@ -123,8 +140,16 @@ REST_FRAMEWORK = {
     ],
     'EXCEPTION_HANDLER': 'core.exceptions.api_exception_handler',
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '120/min',
+        'user': '1000/min',
+    },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
 }

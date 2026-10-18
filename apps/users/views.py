@@ -2,9 +2,11 @@ from rest_framework import generics, status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth import authenticate, login, logout
+from django.core.cache import cache
 from datetime import timedelta
 from django.utils import timezone
 from .models import User, CustomerUser, AdminUser, EmailOTP
+from .permissions import IsAdminRole
 from .serializers import (
     UserSerializer,
     CustomerRegistrationSerializer,
@@ -92,9 +94,19 @@ class VerifySignupOTPView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not password or len(password) < 6:
+        # Brute-force protection: check failed attempts on this email
+        attempts_key = f"otp_verify_attempts_{email}"
+        attempts = cache.get(attempts_key, 0)
+        max_attempts = 5
+        if attempts >= max_attempts:
             return Response(
-                {"error": "Password must be at least 6 characters long."},
+                {"error": "Too many failed verification attempts. Please request a new verification code."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        if not password or len(password) < 8:
+            return Response(
+                {"error": "Password must be at least 8 characters long."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -113,6 +125,7 @@ class VerifySignupOTPView(APIView):
         ).first()
 
         if not otp_obj:
+            cache.set(attempts_key, attempts + 1, timeout=600)
             return Response(
                 {"error": "Invalid verification code. Please check and try again."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -123,6 +136,9 @@ class VerifySignupOTPView(APIView):
                 {"error": "Verification code has expired. Please request a new one."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Clear failed verification attempts on success
+        cache.delete(attempts_key)
 
         # Mark OTP as used
         otp_obj.is_used = True
@@ -234,12 +250,26 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Check failed login attempts lockout
+        lockout_key = f"login_failed_attempts_{email}"
+        failed_login_attempts = cache.get(lockout_key, 0)
+        max_login_attempts = 5
+        if failed_login_attempts >= max_login_attempts:
+            return Response(
+                {"error": "Account temporarily locked due to consecutive failed login attempts. Please try again in 15 minutes."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
         user = authenticate(request, email=email, password=password)
         if user is None:
+            cache.set(lockout_key, failed_login_attempts + 1, timeout=900)
             return Response(
                 {"error": "Invalid email or password. Please try again."},
                 status=status.HTTP_401_UNAUTHORIZED
             )
+
+        # Clear failed login attempts on successful login
+        cache.delete(lockout_key)
 
         login(request, user, backend='apps.users.backends.EmailAuthBackend')
         return Response({
@@ -269,18 +299,21 @@ class CurrentUserProfileView(APIView):
 
 
 class CustomerListView(generics.ListAPIView):
+    permission_classes = [IsAdminRole]
     queryset = CustomerUser.objects.all().order_by('-created_at')
     serializer_class = UserSerializer
     pagination_class = None
 
 
 class AdminUserListView(generics.ListAPIView):
+    permission_classes = [IsAdminRole]
     queryset = AdminUser.objects.all().order_by('-created_at')
     serializer_class = AdminUserSerializer
     pagination_class = None
 
 
 class AllUsersListView(generics.ListCreateAPIView):
+    permission_classes = [IsAdminRole]
     serializer_class = UserSerializer
     pagination_class = None
 
@@ -308,15 +341,18 @@ class AllUsersListView(generics.ListCreateAPIView):
 
 
 class UserDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAdminRole]
     queryset = User.objects.all()
     serializer_class = UserSerializer
     lookup_field = 'id'
 
     def perform_update(self, serializer):
+        request_user = self.request.user
         role = self.request.data.get('role')
         password = self.request.data.get('password')
         user = serializer.save()
-        if role:
+        # Strictly require superuser or admin role to assign roles or staff status
+        if role and request_user and request_user.is_authenticated and (request_user.is_superuser or getattr(request_user, 'is_admin_role', False)):
             user.role = role
             user.is_staff = (role == User.ROLE_ADMIN)
             user.save(update_fields=['role', 'is_staff'])
@@ -326,30 +362,15 @@ class UserDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class ChangePasswordView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         current_password = request.data.get('current_password', '')
         new_password = request.data.get('new_password', '')
         confirm_password = request.data.get('confirm_password', '')
-        user_id = request.data.get('user_id')
-        email = request.data.get('email')
 
-        user = None
-        if request.user and request.user.is_authenticated:
-            user = request.user
-        elif user_id:
-            try:
-                user = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                pass
-        elif email:
-            try:
-                user = User.objects.get(email__iexact=email.strip())
-            except User.DoesNotExist:
-                pass
-
-        if not user:
+        user = request.user
+        if not user or not user.is_authenticated:
             return Response({"error": "User account not identified. Please log in first."}, status=status.HTTP_401_UNAUTHORIZED)
 
         if not current_password:
@@ -358,8 +379,8 @@ class ChangePasswordView(APIView):
         if not user.check_password(current_password):
             return Response({"error": "Current password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not new_password or len(str(new_password).strip()) < 6:
-            return Response({"error": "New password must be at least 6 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+        if not new_password or len(str(new_password).strip()) < 8:
+            return Response({"error": "New password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
 
         if confirm_password and str(new_password).strip() != str(confirm_password).strip():
             return Response({"error": "New password confirmation does not match."}, status=status.HTTP_400_BAD_REQUEST)

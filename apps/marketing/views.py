@@ -2,6 +2,7 @@ from rest_framework import generics, status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from apps.users.permissions import IsAdminRole
 from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, ContactMessage, HeroSlide, Coupon, PromoBanner
 from .serializers import (
     NewsletterSubscriberSerializer,
@@ -73,6 +74,7 @@ class HeroSlideListView(generics.ListAPIView):
 
 class HeroSlideAdminListView(generics.ListCreateAPIView):
     """Admin: every slide, active or not, for the Hero Slide manager."""
+    permission_classes = [IsAdminRole]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = HeroSlide.objects.all().order_by('order', 'id')
     serializer_class = HeroSlideSerializer
@@ -80,6 +82,7 @@ class HeroSlideAdminListView(generics.ListCreateAPIView):
 
 
 class HeroSlideDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAdminRole]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = HeroSlide.objects.all()
     serializer_class = HeroSlideSerializer
@@ -87,6 +90,7 @@ class HeroSlideDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class CouponListCreateView(generics.ListCreateAPIView):
     """Admin: List and Create Coupons"""
+    permission_classes = [IsAdminRole]
     serializer_class = CouponSerializer
     pagination_class = None
 
@@ -121,6 +125,7 @@ class CouponListCreateView(generics.ListCreateAPIView):
 
 class CouponDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Admin: Retrieve, Update, Delete Coupon"""
+    permission_classes = [IsAdminRole]
     queryset = Coupon.objects.all()
     serializer_class = CouponSerializer
 
@@ -188,6 +193,7 @@ class PromoBannerListView(generics.ListAPIView):
 
 class PromoBannerAdminListView(generics.ListCreateAPIView):
     """Admin: all promo banners with strict maximum 2 banners limit."""
+    permission_classes = [IsAdminRole]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = PromoBanner.objects.all().order_by('order', 'id')
     serializer_class = PromoBannerSerializer
@@ -213,6 +219,7 @@ class PromoBannerAdminListView(generics.ListCreateAPIView):
 
 
 class PromoBannerDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAdminRole]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = PromoBanner.objects.all()
     serializer_class = PromoBannerSerializer

@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models.functions import Cast, Coalesce, NullIf, Replace, MD5, Concat
 from django.db.models import Q, F, Case, When, Value, FloatField, CharField, RestrictedError
+from apps.users.permissions import IsAdminRole, IsAdminOrReadOnly
 
 from .models import category_subtree_ids, Category, ProductSection, Product, ProductReview, ProductGalleryImage
 from .serializers import (
@@ -18,6 +19,7 @@ class CategoryListView(generics.ListCreateAPIView):
     """Public: top-level categories only (what the storefront's mega menu
     and category rail show), each with its direct children nested one
     level deep as `subcategories`."""
+    permission_classes = [IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = Category.objects.filter(parent__isnull=True).prefetch_related('children').order_by('order', 'label')
     serializer_class = CategorySerializer
@@ -25,6 +27,7 @@ class CategoryListView(generics.ListCreateAPIView):
 
 
 class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -39,12 +42,14 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
 class CategoryTreeListView(generics.ListAPIView):
     """Admin: every category at every depth, flat, for building the full
     tree (indentation + parent picker) client-side via each row's `parent`."""
+    permission_classes = [IsAdminRole]
     queryset = Category.objects.all().order_by('order', 'label')
     serializer_class = CategorySerializer
     pagination_class = None
 
 
 class MegaMenuReorderView(APIView):
+    permission_classes = [IsAdminRole]
     """Set which categories show in the homepage hero mega menu and their order.
 
     Accepts {"ids": ["cat-1", "cat-2", ...]} - the full ordered list of
@@ -71,6 +76,7 @@ class MegaMenuReorderView(APIView):
 
 
 class HomepageSectionsReorderView(APIView):
+    permission_classes = [IsAdminRole]
     """Set which top-level categories appear as homepage sections and their order.
 
     Accepts {"ids": ["cat-1", "cat-2", ...]} - the full ordered list of
@@ -143,6 +149,7 @@ _category_subtree_ids = category_subtree_ids
 
 
 class ProductListView(generics.ListCreateAPIView):
+    permission_classes = [IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = ProductSerializer
     pagination_class = None
@@ -311,6 +318,7 @@ def _in_bundle_message(ids):
 
 
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = Product.objects.all().select_related('subcategory__parent')
     serializer_class = ProductSerializer
@@ -351,6 +359,7 @@ class ProductReviewCreateView(generics.CreateAPIView):
 
 
 class ProductBulkDeleteView(generics.GenericAPIView):
+    permission_classes = [IsAdminRole]
     parser_classes = [JSONParser, FormParser, MultiPartParser]
 
     def post(self, request, *args, **kwargs):
@@ -373,6 +382,7 @@ class ProductBulkDeleteView(generics.GenericAPIView):
 
 
 class ProductGalleryImageDeleteView(generics.DestroyAPIView):
+    permission_classes = [IsAdminRole]
     queryset = ProductGalleryImage.objects.all()
     serializer_class = ProductGalleryImageSerializer
     lookup_field = 'id'

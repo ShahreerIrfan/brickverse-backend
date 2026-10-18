@@ -39,6 +39,13 @@ class APIRootView(APIView):
             }
         })
 
+def secure_media_serve(request, path, document_root=None, show_indexes=False):
+    response = serve(request, path, document_root=document_root, show_indexes=show_indexes)
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+    return response
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', APIRootView.as_view(), name='api-root'),
@@ -63,10 +70,11 @@ urlpatterns = [
     path('api/coupons/<int:pk>/', CouponDetailView.as_view(), name='top-coupons-detail'),
     path('api/coupons/validate/', CouponValidateView.as_view(), name='top-coupons-validate'),
 
-    # Media files serving (Production & Development)
-    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
-    re_path(r'^api/media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+    # Media files serving with XSS sandboxing (Production & Development)
+    re_path(r'^media/(?P<path>.*)$', secure_media_serve, {'document_root': settings.MEDIA_ROOT}),
+    re_path(r'^api/media/(?P<path>.*)$', secure_media_serve, {'document_root': settings.MEDIA_ROOT}),
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
