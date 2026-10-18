@@ -104,14 +104,26 @@ class OrderTrackView(APIView):
 
 
 class OrderListView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get(self, request):
-        email = request.query_params.get('email')
-        if email:
-            queryset = Order.objects.filter(customer_email__iexact=email.strip()).prefetch_related('items').order_by('-created_at')
+        user = request.user
+        is_admin = bool(getattr(user, 'is_admin_role', False) or user.is_staff or user.is_superuser)
+
+        if is_admin:
+            email = request.query_params.get('email')
+            if email:
+                queryset = Order.objects.filter(customer_email__iexact=email.strip()).prefetch_related('items').order_by('-created_at')
+            else:
+                queryset = Order.objects.all().prefetch_related('items').order_by('-created_at')
         else:
-            queryset = Order.objects.all().prefetch_related('items').order_by('-created_at')
+            # Regular customers can only view their own orders (IDOR mitigation)
+            queryset = Order.objects.filter(customer_email__iexact=user.email).prefetch_related('items').order_by('-created_at')
 
         serializer = OrderSerializer(queryset, many=True)
         return Response(serializer.data)
@@ -125,23 +137,32 @@ class OrderListView(APIView):
         district_val = str(data.get('district') or data.get('city') or '').strip()
         shipping_address = f"{data.get('address', '')}, {district_val}".strip(', ') or data.get('shipping_address', 'Dhaka, Bangladesh')
         
-        # Delivery charge policy: ৳60 inside Dhaka, ৳120 for all other 63 districts unless explicitly specified.
+        # Authoritative server-side delivery charge policy:
+        # ৳60 inside Dhaka, ৳120 for all other 63 districts.
+        is_admin = bool(request.user and request.user.is_authenticated and (getattr(request.user, 'is_admin_role', False) or request.user.is_staff or request.user.is_superuser))
         is_dhaka = district_val.lower() == 'dhaka' or 'dhaka' in shipping_address.lower()
         default_shipping = 60.0 if is_dhaka else 120.0
-        try:
-            if 'shipping_cost' in data and data.get('shipping_cost') is not None:
+        if is_admin and 'shipping_cost' in data and data.get('shipping_cost') is not None:
+            try:
                 shipping_cost = max(0.0, float(data.get('shipping_cost')))
-            else:
+            except (ValueError, TypeError):
                 shipping_cost = default_shipping
-        except (ValueError, TypeError):
+        else:
             shipping_cost = default_shipping
 
-        custom_order_number = str(data.get('order_number') or '').strip()
-        order_number = custom_order_number if custom_order_number else f"KS-{uuid.uuid4().hex[:6].upper()}"
+        # Cryptographically unique order number generation
+        if is_admin and data.get('order_number'):
+            order_number = str(data.get('order_number')).strip()
+        else:
+            order_number = f"KS-{uuid.uuid4().hex[:6].upper()}"
 
-        status_val = str(data.get('status') or 'pending').strip().lower()
-        valid_statuses = [s[0] for s in Order.STATUS_CHOICES]
-        if status_val not in valid_statuses:
+        # Enforce pending status for customer checkout; only admin can create with pre-set status
+        if is_admin and data.get('status'):
+            status_val = str(data.get('status')).strip().lower()
+            valid_statuses = [s[0] for s in Order.STATUS_CHOICES]
+            if status_val not in valid_statuses:
+                status_val = 'pending'
+        else:
             status_val = 'pending'
 
         carrier_val = data.get('carrier') or 'Steadfast Courier (COD)'
@@ -300,9 +321,23 @@ class OrderListView(APIView):
 
 
 class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAdminRole]
     queryset = Order.objects.all().prefetch_related('items')
     serializer_class = OrderSerializer
-    lookup_field = 'id'
+
+    def get_object(self):
+        lookup = str(self.kwargs.get('id', '')).strip()
+        queryset = self.filter_queryset(self.get_queryset())
+        obj = None
+        if lookup.isdigit():
+            obj = queryset.filter(id=int(lookup)).first()
+        if not obj:
+            obj = queryset.filter(order_number__iexact=lookup).first()
+        if not obj:
+            from django.http import Http404
+            raise Http404(f"Order '{lookup}' not found.")
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def update(self, request, *args, **kwargs):
         from django.db import transaction
@@ -342,6 +377,15 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                             except Exception:
                                 pass
 
+            valid_statuses = [s[0] for s in Order.STATUS_CHOICES]
+            if new_status in valid_statuses:
+                order.status = new_status
+            if 'tracking_number' in request.data:
+                order.tracking_number = str(request.data.get('tracking_number') or '').strip()
+            if 'carrier' in request.data:
+                order.carrier = str(request.data.get('carrier') or '').strip()
+
+            kwargs['partial'] = True
             response = super().update(request, *args, **kwargs)
             return response
 

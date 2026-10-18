@@ -106,6 +106,8 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     'cache-control',
     'pragma',
     'expires',
+    'x-session-token',
+    'x-session-key',
 ]
 
 # Reverse proxy SSL header (Traefik / Nginx / Dokploy)
@@ -135,6 +137,11 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'apps.users.authentication.TokenAndSessionAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],

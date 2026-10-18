@@ -7,6 +7,7 @@ from datetime import timedelta
 from django.utils import timezone
 from .models import User, CustomerUser, AdminUser, EmailOTP
 from .permissions import IsAdminRole
+from .authentication import generate_user_token
 from .serializers import (
     UserSerializer,
     CustomerRegistrationSerializer,
@@ -156,11 +157,15 @@ class VerifySignupOTPView(APIView):
 
         # Auto login
         login(request, user, backend='apps.users.backends.EmailAuthBackend')
+        token = generate_user_token(user)
+        user_data = UserSerializer(user).data
+        user_data['token'] = token
 
         return Response({
             "success": True,
             "message": "Account created and verified successfully! Welcome to Kawaii Subete.",
-            "user": UserSerializer(user).data
+            "user": user_data,
+            "token": token
         }, status=status.HTTP_201_CREATED)
 
 
@@ -230,9 +235,13 @@ class RegisterCustomerView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         login(request, user, backend='apps.users.backends.EmailAuthBackend')
+        token = generate_user_token(user)
+        user_data = UserSerializer(user).data
+        user_data['token'] = token
         return Response({
             "message": "Account created successfully! Welcome to Kawaii Subete.",
-            "user": UserSerializer(user).data
+            "user": user_data,
+            "token": token
         }, status=status.HTTP_201_CREATED)
 
 
@@ -272,9 +281,13 @@ class LoginView(APIView):
         cache.delete(lockout_key)
 
         login(request, user, backend='apps.users.backends.EmailAuthBackend')
+        token = generate_user_token(user)
+        user_data = UserSerializer(user).data
+        user_data['token'] = token
         return Response({
             "message": f"Welcome back, {user.first_name or user.email}!",
-            "user": UserSerializer(user).data
+            "user": user_data,
+            "token": token
         }, status=status.HTTP_200_OK)
 
 
@@ -291,9 +304,13 @@ class CurrentUserProfileView(APIView):
 
     def get(self, request):
         if request.user.is_authenticated:
+            token = generate_user_token(request.user)
+            user_data = UserSerializer(request.user).data
+            user_data['token'] = token
             return Response({
                 "authenticated": True,
-                "user": UserSerializer(request.user).data
+                "user": user_data,
+                "token": token
             })
         return Response({"authenticated": False, "user": None})
 

@@ -4,23 +4,27 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 class IsAdminRole(BasePermission):
     """
     Permission check for Admin role.
-    Enforces admin authorization if session credentials are provided.
-    Permits unauthenticated calls to maintain compatibility with decoupled Next.js frontend.
+    Strictly permits only authenticated users with Admin role, staff, or superuser status.
+    Rejects anonymous or regular customer requests (401/403).
     """
     def has_permission(self, request, view):
-        if request.user and request.user.is_authenticated:
-            return bool(getattr(request.user, 'is_admin_role', False) or request.user.is_staff or request.user.is_superuser)
-        return bool(1)
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            (getattr(request.user, 'is_admin_role', False) or request.user.is_staff or request.user.is_superuser)
+        )
 
 
 class IsAdminOrReadOnly(BasePermission):
     """
     Allows read-only access (GET, HEAD, OPTIONS) to any user or visitor.
-    Supports modifying operations for decoupled Next.js storefront and dashboard.
+    Requires authenticated Admin role for any modifying operations (POST, PUT, PATCH, DELETE).
     """
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
-            return bool(1)
-        if request.user and request.user.is_authenticated:
-            return bool(getattr(request.user, 'is_admin_role', False) or request.user.is_staff or request.user.is_superuser)
-        return bool(1)
+            return bool(request.method in SAFE_METHODS)
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            (getattr(request.user, 'is_admin_role', False) or request.user.is_staff or request.user.is_superuser)
+        )
