@@ -108,6 +108,8 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     'expires',
     'x-session-token',
     'x-session-key',
+    'x-user-email',
+    'x-user-id',
 ]
 
 # Reverse proxy SSL header (Traefik / Nginx / Dokploy)

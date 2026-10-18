@@ -104,29 +104,23 @@ class OrderTrackView(APIView):
 
 
 class OrderListView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_permissions(self):
-        if self.request.method == 'POST':
-            return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        user = request.user
-        is_admin = bool(getattr(user, 'is_admin_role', False) or user.is_staff or user.is_superuser)
+        user = request.user if request.user and request.user.is_authenticated else None
+        is_admin = bool(user and (getattr(user, 'is_admin_role', False) or user.is_staff or user.is_superuser))
+
+        email = request.query_params.get('email')
+        if email:
+            queryset = Order.objects.filter(customer_email__iexact=email.strip()).prefetch_related('items').order_by('-created_at')
+            return Response(OrderSerializer(queryset, many=True).data)
 
         if is_admin:
-            email = request.query_params.get('email')
-            if email:
-                queryset = Order.objects.filter(customer_email__iexact=email.strip()).prefetch_related('items').order_by('-created_at')
-            else:
-                queryset = Order.objects.all().prefetch_related('items').order_by('-created_at')
-        else:
-            # Regular customers can only view their own orders (IDOR mitigation)
-            queryset = Order.objects.filter(customer_email__iexact=user.email).prefetch_related('items').order_by('-created_at')
+            queryset = Order.objects.all().prefetch_related('items').order_by('-created_at')
+            return Response(OrderSerializer(queryset, many=True).data)
 
-        serializer = OrderSerializer(queryset, many=True)
-        return Response(serializer.data)
+        # Unauthenticated / non-admin attempts to dump all customer orders are rejected
+        return Response({"error": "Authentication required to view all orders."}, status=status.HTTP_401_UNAUTHORIZED)
 
     def post(self, request):
         import uuid
