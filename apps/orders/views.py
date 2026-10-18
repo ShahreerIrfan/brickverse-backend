@@ -194,8 +194,8 @@ class OrderListView(APIView):
             except Exception:
                 price_val = 0.0
 
-            # Override with authoritative catalog price if product exists in database
-            if prod:
+            # Override with authoritative catalog price for regular customer checkout to prevent price tampering
+            if not is_admin and prod:
                 raw_catalog = prod.discounted_price or prod.price or prod.regular_price or '0'
                 try:
                     cat_val = float(str(raw_catalog).replace('৳', '').replace('$', '').replace(',', '').strip() or 0)
@@ -243,8 +243,29 @@ class OrderListView(APIView):
             except Exception:
                 pass
 
-        if calculated_subtotal > 0:
-            total_amount = max(0.0, (calculated_subtotal - discount_amount)) + shipping_cost
+        # If admin specified a manual discount (e.g. from CustomOrderPage)
+        manual_discount = 0.0
+        if is_admin:
+            raw_discount = data.get('discount_amount') or data.get('discount') or data.get('manual_discount')
+            if raw_discount is not None:
+                try:
+                    manual_discount = max(0.0, float(raw_discount))
+                except (ValueError, TypeError):
+                    manual_discount = 0.0
+
+        applied_discount = max(discount_amount, manual_discount)
+
+        if is_admin and 'total_amount' in data and data.get('total_amount') is not None:
+            try:
+                passed_total = float(data.get('total_amount'))
+                if passed_total >= 0:
+                    total_amount = passed_total
+                else:
+                    total_amount = max(0.0, (calculated_subtotal - applied_discount)) + shipping_cost
+            except (ValueError, TypeError):
+                total_amount = max(0.0, (calculated_subtotal - applied_discount)) + shipping_cost
+        elif calculated_subtotal > 0:
+            total_amount = max(0.0, (calculated_subtotal - applied_discount)) + shipping_cost
         else:
             total_amount = max(0.0, float(data.get('total_amount') or 0))
 
