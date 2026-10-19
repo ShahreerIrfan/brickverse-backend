@@ -406,4 +406,3 @@ class ChangePasswordView(APIView):
         user.save()
         return Response({"success": True, "message": "Password updated successfully!"}, status=status.HTTP_200_OK)
 
-
