@@ -118,6 +118,42 @@ class ProductReviewSerializer(serializers.ModelSerializer):
         fields = ['id', 'author', 'rating', 'comment', 'date']
 
 
+from .models import (
+    Category, ProductSection, Product, ProductReview, ProductGalleryImage,
+    GroupedProductItem, ProductLot, category_subtree_ids
+)
+
+
+class ProductLotSerializer(serializers.ModelSerializer):
+    productId = serializers.CharField(source='product_id', read_only=True)
+    lotNumber = serializers.CharField(source='lot_number', required=False, allow_blank=True)
+    tradePrice = serializers.CharField(source='trade_price', required=False)
+    mrp = serializers.CharField(required=False)
+    discountedPrice = serializers.CharField(source='discounted_price', required=False, allow_blank=True)
+    initialQuantity = serializers.IntegerField(source='initial_quantity', required=False)
+    remainingQuantity = serializers.IntegerField(source='remaining_quantity', required=False)
+    isActive = serializers.BooleanField(source='is_active', required=False)
+    createdAt = serializers.DateTimeField(source='created_at', format='%Y-%m-%d %H:%M', read_only=True)
+    updatedAt = serializers.DateTimeField(source='updated_at', format='%Y-%m-%d %H:%M', read_only=True)
+
+    class Meta:
+        model = ProductLot
+        fields = [
+            'id',
+            'productId',
+            'lotNumber',
+            'tradePrice',
+            'mrp',
+            'discountedPrice',
+            'initialQuantity',
+            'remainingQuantity',
+            'isActive',
+            'notes',
+            'createdAt',
+            'updatedAt',
+        ]
+
+
 class ProductSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
     categoryColor = serializers.CharField(source='category_color', required=False, allow_blank=True)
@@ -138,6 +174,29 @@ class ProductSerializer(serializers.ModelSerializer):
     # Read side (groupItems + bundleTotal) is added in to_representation.
     groupItems = serializers.JSONField(write_only=True, required=False)
     categoryPath = serializers.SerializerMethodField(read_only=True)
+    hasLots = serializers.SerializerMethodField(read_only=True)
+    activeLot = serializers.SerializerMethodField(read_only=True)
+    lotsCount = serializers.SerializerMethodField(read_only=True)
+
+    def get_hasLots(self, obj):
+        return obj.has_lots
+
+    def get_activeLot(self, obj):
+        lot = obj.active_lot
+        if not lot:
+            return None
+        return {
+            'id': lot.id,
+            'lotNumber': lot.lot_number,
+            'tradePrice': lot.trade_price,
+            'mrp': lot.mrp,
+            'discountedPrice': lot.discounted_price,
+            'remainingQuantity': lot.remaining_quantity,
+            'initialQuantity': lot.initial_quantity,
+        }
+
+    def get_lotsCount(self, obj):
+        return obj.lots.filter(is_active=True).count()
 
     def get_categoryPath(self, obj):
         """Ancestor chain for the breadcrumb: [top-level category, ..., immediate
@@ -194,6 +253,9 @@ class ProductSerializer(serializers.ModelSerializer):
             'order',
             'gallery_images',
             'reviews_list',
+            'hasLots',
+            'activeLot',
+            'lotsCount',
         ]
         extra_kwargs = {
             'section': {'required': False},
@@ -201,6 +263,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'sku': {'required': False},
             'image_file': {'required': False, 'allow_null': True},
         }
+
 
     @staticmethod
     def _price_value(text):

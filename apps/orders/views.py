@@ -292,21 +292,12 @@ class OrderListView(APIView):
                     qty = r_item["qty"]
                     is_preorder = r_item["is_preorder"]
 
-                    OrderItem.objects.create(
-                        order=order,
-                        product=prod,
-                        product_name=r_item["item_name"],
-                        price=r_item["price_val"],
-                        quantity=qty,
-                        bundle_items=r_item["bundle_items"],
-                        is_preorder=is_preorder,
-                    )
-
                     # When an order is placed (with status pending or any non-cancelled status),
-                    # immediately deduct the ordered quantity from the product stock!
+                    # immediately deduct the ordered quantity from the product stock/lots (FIFO)!
+                    deductions = []
                     if prod and status_val != 'cancelled' and not is_preorder:
                         try:
-                            deduct_stock(prod, qty)
+                            deductions = deduct_stock(prod, qty)
                         except InsufficientStock:
                             if not r_item["allow_preorder_fallback"]:
                                 raise
@@ -319,6 +310,50 @@ class OrderListView(APIView):
                                     locked_p.save(update_fields=['stock'])
                             except Exception:
                                 pass
+
+                    if deductions and len(deductions) > 0:
+                        first_ded = deductions[0]
+                        OrderItem.objects.create(
+                            order=order,
+                            product=prod,
+                            product_name=r_item["item_name"],
+                            price=r_item["price_val"],
+                            quantity=first_ded["quantity"],
+                            bundle_items=r_item["bundle_items"],
+                            is_preorder=is_preorder,
+                            lot=first_ded.get("lot"),
+                            lot_number=first_ded.get("lot_number", ""),
+                            trade_price=first_ded.get("trade_price", ""),
+                        )
+                        for extra_ded in deductions[1:]:
+                            extra_price = extra_ded.get("mrp") or r_item["price_val"]
+                            try:
+                                extra_price_val = float(re.sub(r'[^0-9.]', '', str(extra_price)))
+                            except Exception:
+                                extra_price_val = r_item["price_val"]
+                            OrderItem.objects.create(
+                                order=order,
+                                product=prod,
+                                product_name=r_item["item_name"],
+                                price=extra_price_val,
+                                quantity=extra_ded["quantity"],
+                                bundle_items=r_item["bundle_items"],
+                                is_preorder=is_preorder,
+                                lot=extra_ded.get("lot"),
+                                lot_number=extra_ded.get("lot_number", ""),
+                                trade_price=extra_ded.get("trade_price", ""),
+                            )
+                    else:
+                        OrderItem.objects.create(
+                            order=order,
+                            product=prod,
+                            product_name=r_item["item_name"],
+                            price=r_item["price_val"],
+                            quantity=qty,
+                            bundle_items=r_item["bundle_items"],
+                            is_preorder=is_preorder,
+                            trade_price=prod.trade_price if prod else "",
+                        )
         except InsufficientStock as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -375,7 +410,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                         if not prod and item.product_name:
                             prod = Product.objects.filter(name__iexact=item.product_name).first() or Product.objects.filter(slug=slugify(item.product_name)).first()
                         if prod:
-                            restock_product(prod, item.quantity, bundle_items=item.bundle_items)
+                            restock_product(prod, item.quantity, bundle_items=item.bundle_items, lot_id=item.lot_id)
 
             # If transitioning from 'cancelled' back to an active status -> DEDUCT STOCK!
             elif old_status == 'cancelled' and new_status != 'cancelled':
@@ -420,7 +455,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                         if not prod and item.product_name:
                             prod = Product.objects.filter(name__iexact=item.product_name).first() or Product.objects.filter(slug=slugify(item.product_name)).first()
                         if prod:
-                            restock_product(prod, item.quantity, bundle_items=item.bundle_items)
+                            restock_product(prod, item.quantity, bundle_items=item.bundle_items, lot_id=item.lot_id)
             instance.delete()
 
 

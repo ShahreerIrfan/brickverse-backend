@@ -90,7 +90,12 @@ class OrderItem(models.Model):
     bundle_items = models.JSONField(default=list, blank=True)
     # Simple product that had no stock when ordered: accepted as a pre-order, no stock deducted.
     is_preorder = models.BooleanField(default=False)
+    # FIFO lot/batch fulfillment tracking
+    lot = models.ForeignKey('products.ProductLot', null=True, blank=True, on_delete=models.SET_NULL, related_name='order_items')
+    trade_price = models.CharField(max_length=50, blank=True, default="৳0.00")
+    lot_number = models.CharField(max_length=100, blank=True, default="")
 
     def __str__(self):
         return f"{self.quantity}x {self.product_name}"
+
 # 

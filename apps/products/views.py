@@ -6,14 +6,19 @@ from django.db.models.functions import Cast, Coalesce, NullIf, Replace, MD5, Con
 from django.db.models import Q, F, Case, When, Value, FloatField, CharField, RestrictedError
 from apps.users.permissions import IsAdminRole, IsAdminOrReadOnly
 
-from .models import category_subtree_ids, Category, ProductSection, Product, ProductReview, ProductGalleryImage
+from .models import (
+    category_subtree_ids, Category, ProductSection, Product,
+    ProductReview, ProductGalleryImage, ProductLot, sync_product_from_active_lot
+)
 from .serializers import (
     CategorySerializer,
     ProductSectionSerializer,
     ProductSerializer,
     ProductReviewSerializer,
     ProductGalleryImageSerializer,
+    ProductLotSerializer,
 )
+
 
 class CategoryListView(generics.ListCreateAPIView):
     """Public: top-level categories only (what the storefront's mega menu
@@ -386,3 +391,184 @@ class ProductGalleryImageDeleteView(generics.DestroyAPIView):
     queryset = ProductGalleryImage.objects.all()
     serializer_class = ProductGalleryImageSerializer
     lookup_field = 'id'
+
+
+class ProductLotListCreateView(APIView):
+    permission_classes = [IsAdminOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+
+    def _get_product(self, product_id):
+        product_id = str(product_id).strip()
+        prod = Product.objects.filter(id=product_id).first()
+        if not prod:
+            prod = Product.objects.filter(slug=product_id).first()
+        return prod
+
+    def get(self, request, product_id):
+        prod = self._get_product(product_id)
+        if not prod:
+            return Response({'error': f'Product "{product_id}" not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        lots = prod.lots.all().order_by('created_at', 'id')
+        active_lot = prod.active_lot
+        total_remaining = sum(max(0, lot.remaining_quantity) for lot in lots if lot.is_active)
+
+        serializer = ProductLotSerializer(lots, many=True)
+        return Response({
+            'productId': prod.id,
+            'productName': prod.name,
+            'currentStock': prod.stock,
+            'currentTradePrice': prod.trade_price,
+            'currentRegularPrice': prod.regular_price,
+            'currentPrice': prod.price,
+            'totalLotRemaining': total_remaining,
+            'activeLotId': active_lot.id if active_lot else None,
+            'activeLotNumber': active_lot.lot_number if active_lot else None,
+            'lots': serializer.data,
+        })
+
+    def post(self, request, product_id):
+        from django.db import transaction
+        prod = self._get_product(product_id)
+        if not prod:
+            return Response({'error': f'Product "{product_id}" not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        action = request.data.get('action')
+
+        # Quick action: Initialize initial lot from current product stock if no lots exist
+        if action == 'init_from_stock':
+            with transaction.atomic():
+                if prod.lots.exists():
+                    return Response({'error': 'Product already has lots.'}, status=status.HTTP_400_BAD_REQUEST)
+                qty = max(0, int(prod.stock or 0))
+                lot = ProductLot.objects.create(
+                    product=prod,
+                    lot_number=f"LOT-INIT-{prod.id[:10].upper()}",
+                    trade_price=prod.trade_price or "৳0.00",
+                    mrp=prod.regular_price or prod.price or "৳0.00",
+                    discounted_price=prod.discounted_price or "৳0.00",
+                    initial_quantity=qty,
+                    remaining_quantity=qty,
+                    is_active=True,
+                    notes="Initialized from legacy product stock"
+                )
+                prod.sync_from_active_lot()
+                return Response({
+                    'message': 'Initial lot created from product stock.',
+                    'lot': ProductLotSerializer(lot).data,
+                    'product': ProductSerializer(prod).data,
+                }, status=status.HTTP_201_CREATED)
+
+        # Standard new lot creation (Restock)
+        raw_qty = request.data.get('quantity') or request.data.get('initialQuantity') or request.data.get('initial_quantity')
+        try:
+            qty = int(raw_qty)
+            if qty <= 0:
+                return Response({'error': 'Quantity must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+        except (TypeError, ValueError):
+            return Response({'error': 'Valid quantity is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        trade_price = request.data.get('tradePrice') or request.data.get('trade_price') or prod.trade_price or "৳0.00"
+        mrp = request.data.get('mrp') or request.data.get('regularPrice') or prod.regular_price or prod.price or "৳0.00"
+        discounted_price = request.data.get('discountedPrice') or request.data.get('discounted_price') or ""
+        lot_number = str(request.data.get('lotNumber') or request.data.get('lot_number') or '').strip()
+        notes = str(request.data.get('notes') or '').strip()
+
+        with transaction.atomic():
+            lot = ProductLot.objects.create(
+                product=prod,
+                lot_number=lot_number,
+                trade_price=str(trade_price).strip(),
+                mrp=str(mrp).strip(),
+                discounted_price=str(discounted_price).strip(),
+                initial_quantity=qty,
+                remaining_quantity=qty,
+                is_active=True,
+                notes=notes,
+            )
+            prod.sync_from_active_lot()
+
+        return Response({
+            'message': f'Lot "{lot.lot_number}" created successfully!',
+            'lot': ProductLotSerializer(lot).data,
+            'product': ProductSerializer(prod).data,
+        }, status=status.HTTP_201_CREATED)
+
+
+class ProductLotDetailView(APIView):
+    permission_classes = [IsAdminOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_object(self, pk):
+        from django.http import Http404
+        lot = ProductLot.objects.filter(pk=pk).select_related('product').first()
+        if not lot:
+            raise Http404(f"Lot '{pk}' not found.")
+        return lot
+
+    def get(self, request, pk):
+        lot = self.get_object(pk)
+        return Response(ProductLotSerializer(lot).data)
+
+    def patch(self, request, pk):
+        from django.db import transaction
+        lot = self.get_object(pk)
+        data = request.data
+
+        with transaction.atomic():
+            if 'remainingQuantity' in data or 'remaining_quantity' in data:
+                raw_rem = data.get('remainingQuantity') if 'remainingQuantity' in data else data.get('remaining_quantity')
+                try:
+                    lot.remaining_quantity = max(0, int(raw_rem))
+                except (TypeError, ValueError):
+                    pass
+            if 'initialQuantity' in data or 'initial_quantity' in data:
+                raw_init = data.get('initialQuantity') if 'initialQuantity' in data else data.get('initial_quantity')
+                try:
+                    lot.initial_quantity = max(0, int(raw_init))
+                except (TypeError, ValueError):
+                    pass
+            if 'tradePrice' in data or 'trade_price' in data:
+                lot.trade_price = str(data.get('tradePrice') or data.get('trade_price')).strip()
+            if 'mrp' in data:
+                lot.mrp = str(data.get('mrp')).strip()
+            if 'discountedPrice' in data or 'discounted_price' in data:
+                lot.discounted_price = str(data.get('discountedPrice') or data.get('discounted_price')).strip()
+            if 'lotNumber' in data or 'lot_number' in data:
+                new_num = str(data.get('lotNumber') or data.get('lot_number')).strip()
+                if new_num:
+                    lot.lot_number = new_num
+            if 'isActive' in data or 'is_active' in data:
+                val = data.get('isActive') if 'isActive' in data else data.get('is_active')
+                lot.is_active = str(val).lower() in ('true', '1', 'yes')
+            if 'notes' in data:
+                lot.notes = str(data.get('notes') or '').strip()
+
+            lot.save()
+            lot.product.sync_from_active_lot()
+
+        return Response({
+            'message': 'Lot updated successfully.',
+            'lot': ProductLotSerializer(lot).data,
+            'product': ProductSerializer(lot.product).data,
+        })
+
+    def delete(self, request, pk):
+        from django.db import transaction
+        lot = self.get_object(pk)
+        product = lot.product
+
+        with transaction.atomic():
+            # Check if this lot is referenced by any orders
+            has_orders = lot.order_items.exists()
+            if has_orders:
+                lot.is_active = False
+                lot.save(update_fields=['is_active', 'updated_at'])
+                product.sync_from_active_lot()
+                return Response({'message': f'Lot "{lot.lot_number}" has order history and was deactivated instead of permanently deleted.'})
+            else:
+                lot.delete()
+                product.sync_from_active_lot()
+                return Response({'message': 'Lot was deleted successfully.'}, status=status.HTTP_204_NO_CONTENT)
+

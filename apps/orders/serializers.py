@@ -63,6 +63,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
     is_preorder = serializers.BooleanField(read_only=True)
     originalPrice = serializers.SerializerMethodField()
 
+    lotId = serializers.IntegerField(source='lot_id', read_only=True, default=None)
+    lotNumber = serializers.CharField(source='lot_number', read_only=True, default="")
+    tradePrice = serializers.CharField(source='trade_price', read_only=True, default="")
+
     class Meta:
         model = OrderItem
         fields = [
@@ -79,7 +83,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'isPreorder',
             'is_preorder',
             'originalPrice',
+            'lotId',
+            'lotNumber',
+            'tradePrice',
         ]
+
 
     def _get_product_instance(self, obj):
         prod = obj.product
