@@ -9,8 +9,6 @@ python manage.py migrate --noinput
 echo "==> Ensuring catalog data and admin users are seeded..."
 python manage.py seed_catalog || true
 
-echo "==> Restoring deleted customer orders..."
-python manage.py restore_recovered_orders || true
 
 echo "==> Collecting static files..."
 python manage.py collectstatic --noinput

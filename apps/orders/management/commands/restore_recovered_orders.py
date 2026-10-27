@@ -167,22 +167,11 @@ class Command(BaseCommand):
                     }
                 )
 
-                if created:
-                    created_count += 1
-                else:
-                    order.customer_name = data["customer_name"]
-                    order.customer_phone = data["customer_phone"]
-                    order.customer_email = data["customer_email"]
-                    order.shipping_address = data["shipping_address"]
-                    order.shipping_cost = data["shipping_cost"]
-                    order.total_amount = data["total_amount"]
-                    order.status = data["status"]
-                    order.carrier = data["carrier"]
-                    order.save()
-                    updated_count += 1
+                if not created:
+                    self.stdout.write(self.style.NOTICE(f"  [SKIPPED] Order #{order_num} already exists in database. Leaving untouched."))
+                    continue
 
-                # Recreate line items
-                OrderItem.objects.filter(order=order).delete()
+                created_count += 1
                 for it in data["items"]:
                     prod = Product.objects.filter(slug=it["slug"]).first()
                     if not prod:
