@@ -30,24 +30,32 @@ class PartnerStore(models.Model):
 
     @property
     def value_given(self):
+        if hasattr(self, '_prefetched_objects_cache') and 'product_lines' in self._prefetched_objects_cache:
+            return sum((line.qty_given or 0) * (line.tp_at_time or 0) for line in self.product_lines.all())
         return self.lines.aggregate(
             v=Sum(F('qty_given') * F('tp_at_time'))
         )['v'] or 0
 
     @property
     def value_sold(self):
+        if hasattr(self, '_prefetched_objects_cache') and 'product_lines' in self._prefetched_objects_cache:
+            return sum((line.qty_sold or 0) * (line.tp_at_time or 0) for line in self.product_lines.all())
         return self.lines.aggregate(
             v=Sum(F('qty_sold') * F('tp_at_time'))
         )['v'] or 0
 
     @property
     def value_remaining(self):
+        if hasattr(self, '_prefetched_objects_cache') and 'product_lines' in self._prefetched_objects_cache:
+            return sum(((line.qty_given or 0) - (line.qty_sold or 0) - (line.qty_returned or 0)) * (line.tp_at_time or 0) for line in self.product_lines.all())
         return self.lines.aggregate(
             v=Sum((F('qty_given') - F('qty_sold') - F('qty_returned')) * F('tp_at_time'))
         )['v'] or 0
 
     @property
     def total_paid(self):
+        if hasattr(self, '_prefetched_objects_cache') and 'payments' in self._prefetched_objects_cache:
+            return sum((p.amount or 0) for p in self.payments.all())
         return self.payments.aggregate(v=Sum('amount'))['v'] or 0
 
     @property
@@ -61,7 +69,11 @@ class PartnerStore(models.Model):
         if due <= 0:
             return 'up_to_date'
         from django.utils import timezone
-        last_payment = self.payments.order_by('-payment_date').first()
+        if hasattr(self, '_prefetched_objects_cache') and 'payments' in self._prefetched_objects_cache:
+            payments = sorted(self.payments.all(), key=lambda p: p.payment_date, reverse=True)
+            last_payment = payments[0] if payments else None
+        else:
+            last_payment = self.payments.order_by('-payment_date').first()
         if not last_payment:
             days_since_created = (timezone.now().date() - self.created_at.date()).days
             return 'overdue' if days_since_created > 30 else 'due_this_month'

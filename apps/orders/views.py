@@ -496,6 +496,7 @@ class AdminDashboardStatsView(APIView):
         # -------------------------------------------------------------
         # Dynamic 7-Day Sales Overview Trend (This Week vs Last Week)
         # Excludes cancelled orders so revenue reflects valid sales
+        # Optimized into 1 single batch query instead of 21 queries in loop
         # -------------------------------------------------------------
         now = timezone.now()
         today = now.date()
@@ -505,18 +506,26 @@ class AdminDashboardStatsView(APIView):
         total_current_7d = 0.0
         total_previous_7d = 0.0
 
+        earliest_date = today - timedelta(days=14)
+        daily_stats_qs = (
+            Order.objects.filter(created_at__date__gte=earliest_date)
+            .exclude(status='cancelled')
+            .values('created_at__date')
+            .annotate(total=Sum('total_amount'), count=Count('id'))
+        )
+        stats_by_date = {item['created_at__date']: item for item in daily_stats_qs}
+
         for i in range(6, -1, -1):
             day_date = today - timedelta(days=i)
             prev_week_date = day_date - timedelta(days=7)
 
-            # This week
-            day_orders = Order.objects.filter(created_at__date=day_date).exclude(status='cancelled')
-            day_rev = float(day_orders.aggregate(total=Sum('total_amount'))['total'] or 0)
+            day_stat = stats_by_date.get(day_date)
+            day_rev = float(day_stat['total'] or 0) if day_stat else 0.0
+            day_count = int(day_stat['count'] or 0) if day_stat else 0
             total_current_7d += day_rev
 
-            # Previous week
-            prev_orders = Order.objects.filter(created_at__date=prev_week_date).exclude(status='cancelled')
-            prev_rev = float(prev_orders.aggregate(total=Sum('total_amount'))['total'] or 0)
+            prev_stat = stats_by_date.get(prev_week_date)
+            prev_rev = float(prev_stat['total'] or 0) if prev_stat else 0.0
             total_previous_7d += prev_rev
 
             daily_sales.append({
@@ -524,7 +533,7 @@ class AdminDashboardStatsView(APIView):
                 "date": day_date.strftime("%b %d"),
                 "revenue": day_rev,
                 "last_week_revenue": prev_rev,
-                "orders_count": day_orders.count(),
+                "orders_count": day_count,
                 "is_today": (i == 0),
             })
 
@@ -549,12 +558,16 @@ class AdminDashboardStatsView(APIView):
             max_sold_units = max(int(item['total_sold']) for item in top_order_items) or 1
             bg_colors = ["#FFEAF0", "#E4F7F8", "#FFF4DA", "#EFE9FF", "#E7F8F0"]
 
+            # Batch fetch products to avoid N+1 queries in loop
+            p_ids = [item['product_id'] for item in top_order_items if item['product_id']]
+            p_names = [item['product_name'] for item in top_order_items if item['product_name']]
+            prods_by_id = {p.id: p for p in Product.objects.filter(id__in=p_ids)}
+            prods_by_name = {p.name.lower(): p for p in Product.objects.filter(name__in=p_names)}
+
             for idx, item in enumerate(top_order_items):
-                prod = None
-                if item['product_id']:
-                    prod = Product.objects.filter(id=item['product_id']).first()
-                if not prod:
-                    prod = Product.objects.filter(name__iexact=item['product_name']).first()
+                prod = prods_by_id.get(item['product_id']) if item['product_id'] else None
+                if not prod and item['product_name']:
+                    prod = prods_by_name.get(item['product_name'].lower())
 
                 cat_name = "Collectibles"
                 if prod and prod.category:

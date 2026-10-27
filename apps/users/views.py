@@ -317,7 +317,7 @@ class CurrentUserProfileView(APIView):
 
 class CustomerListView(generics.ListAPIView):
     permission_classes = [IsAdminRole]
-    queryset = CustomerUser.objects.all().order_by('-created_at')
+    queryset = CustomerUser.objects.all().select_related('customer_profile').order_by('-created_at')
     serializer_class = UserSerializer
     pagination_class = None
 
@@ -335,7 +335,7 @@ class AllUsersListView(generics.ListCreateAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = User.objects.all().order_by('-created_at')
+        queryset = User.objects.all().select_related('customer_profile').order_by('-created_at')
         role = self.request.query_params.get('role')
         search = self.request.query_params.get('search')
         if role and role.lower() != 'all':

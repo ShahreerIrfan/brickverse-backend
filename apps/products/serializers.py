@@ -57,6 +57,8 @@ class CategorySerializer(serializers.ModelSerializer):
         }
 
     def get_childrenCount(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'children' in obj._prefetched_objects_cache:
+            return len(obj.children.all())
         return obj.children.count()
 
     def get_productCount(self, obj):
@@ -179,10 +181,18 @@ class ProductSerializer(serializers.ModelSerializer):
     lotsCount = serializers.SerializerMethodField(read_only=True)
 
     def get_hasLots(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'lots' in obj._prefetched_objects_cache:
+            return any(l.is_active for l in obj.lots.all())
         return obj.has_lots
 
     def get_activeLot(self, obj):
-        lot = obj.active_lot
+        if hasattr(obj, '_prefetched_objects_cache') and 'lots' in obj._prefetched_objects_cache:
+            active_lots = [l for l in obj.lots.all() if l.is_active and (l.remaining_quantity or 0) > 0]
+            if not active_lots:
+                return None
+            lot = sorted(active_lots, key=lambda l: (l.created_at, l.id))[0]
+        else:
+            lot = obj.active_lot
         if not lot:
             return None
         return {
@@ -196,6 +206,8 @@ class ProductSerializer(serializers.ModelSerializer):
         }
 
     def get_lotsCount(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'lots' in obj._prefetched_objects_cache:
+            return sum(1 for l in obj.lots.all() if l.is_active)
         return obj.lots.filter(is_active=True).count()
 
     def get_categoryPath(self, obj):

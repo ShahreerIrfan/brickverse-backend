@@ -69,6 +69,8 @@ class PartnerStoreListSerializer(serializers.ModelSerializer):
                   'settlementStatus', 'lastSettlementDate', 'created_at']
 
     def get_productsCount(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'product_lines' in obj._prefetched_objects_cache:
+            return len(obj.product_lines.all())
         return obj.lines.count()
 
     def get_valueGiven(self, obj):
@@ -84,6 +86,9 @@ class PartnerStoreListSerializer(serializers.ModelSerializer):
         return obj.settlement_status
 
     def get_lastSettlementDate(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'payments' in obj._prefetched_objects_cache:
+            payments = sorted(obj.payments.all(), key=lambda p: p.payment_date, reverse=True)
+            return payments[0].payment_date if payments else None
         last = obj.payments.order_by('-payment_date').first()
         return last.payment_date if last else None
 

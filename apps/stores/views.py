@@ -26,7 +26,7 @@ def _parse_tp(product: Product) -> Decimal:
 
 
 class PartnerStoreListView(generics.ListCreateAPIView):
-    queryset = PartnerStore.objects.all().prefetch_related('product_lines', 'payments')
+    queryset = PartnerStore.objects.all().prefetch_related('product_lines__product', 'payments')
     pagination_class = None
     permission_classes = [IsAdminRole]
 

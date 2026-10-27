@@ -26,7 +26,7 @@ class CategoryListView(generics.ListCreateAPIView):
     level deep as `subcategories`."""
     permission_classes = [IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    queryset = Category.objects.filter(parent__isnull=True).prefetch_related('children').order_by('order', 'label')
+    queryset = Category.objects.filter(parent__isnull=True).select_related('parent').prefetch_related('children').order_by('order', 'label')
     serializer_class = CategorySerializer
     pagination_class = None
 
@@ -34,7 +34,7 @@ class CategoryListView(generics.ListCreateAPIView):
 class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    queryset = Category.objects.all()
+    queryset = Category.objects.all().select_related('parent').prefetch_related('children')
     serializer_class = CategorySerializer
     lookup_field = 'id'
 
@@ -48,7 +48,7 @@ class CategoryTreeListView(generics.ListAPIView):
     """Admin: every category at every depth, flat, for building the full
     tree (indentation + parent picker) client-side via each row's `parent`."""
     permission_classes = [IsAdminRole]
-    queryset = Category.objects.all().order_by('order', 'label')
+    queryset = Category.objects.all().select_related('parent').prefetch_related('children').order_by('order', 'label')
     serializer_class = CategorySerializer
     pagination_class = None
 
@@ -125,7 +125,8 @@ class HomepageSectionListView(APIView):
             subtree = category_subtree_ids(cat.id)
             qs = (
                 Product.objects.filter(Q(category__iexact=cat.id) | Q(subcategory_id__in=subtree), is_active=True)
-                .select_related('subcategory')
+                .select_related('subcategory__parent')
+                .prefetch_related('group_items__child', 'gallery_images', 'reviews_list', 'lots')
                 .order_by('-created_at', '-id')
             )
             total = qs.count()
@@ -145,7 +146,13 @@ class HomepageSectionListView(APIView):
 
 
 class ProductSectionListView(generics.ListAPIView):
-    queryset = ProductSection.objects.filter(is_active=True).prefetch_related('products__subcategory').order_by('order')
+    queryset = ProductSection.objects.filter(is_active=True).prefetch_related(
+        'products__subcategory__parent',
+        'products__group_items__child',
+        'products__gallery_images',
+        'products__reviews_list',
+        'products__lots'
+    ).order_by('order')
     serializer_class = ProductSectionSerializer
     pagination_class = None
 
@@ -160,7 +167,7 @@ class ProductListView(generics.ListCreateAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = Product.objects.all().select_related('subcategory__parent').prefetch_related('group_items__child').order_by('-created_at', '-id')
+        queryset = Product.objects.all().select_related('subcategory__parent').prefetch_related('group_items__child', 'gallery_images', 'reviews_list', 'lots').order_by('-created_at', '-id')
         category = self.request.query_params.get('category')
         subcategory = self.request.query_params.get('subcategory')
         section = self.request.query_params.get('section')
