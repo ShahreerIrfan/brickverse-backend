@@ -111,13 +111,19 @@ class OrderListView(APIView):
         is_admin = bool(user and (getattr(user, 'is_admin_role', False) or user.is_staff or user.is_superuser))
 
         email = request.query_params.get('email')
+        from django.db.models import Prefetch
+        prefetch_items = Prefetch(
+            'items',
+            queryset=OrderItem.objects.select_related('product').prefetch_related('product__gallery_images')
+        )
         if email:
-            queryset = Order.objects.filter(customer_email__iexact=email.strip()).prefetch_related('items').order_by('-created_at')
+            queryset = Order.objects.filter(customer_email__iexact=email.strip()).prefetch_related(prefetch_items).order_by('-created_at')
             return Response(OrderSerializer(queryset, many=True).data)
 
         if is_admin:
-            queryset = Order.objects.all().prefetch_related('items').order_by('-created_at')
+            queryset = Order.objects.all().prefetch_related(prefetch_items).order_by('-created_at')
             return Response(OrderSerializer(queryset, many=True).data)
+
 
         # Unauthenticated / non-admin attempts to dump all customer orders are rejected
         return Response({"error": "Authentication required to view all orders."}, status=status.HTTP_401_UNAUTHORIZED)

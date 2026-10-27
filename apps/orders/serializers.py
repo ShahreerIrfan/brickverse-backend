@@ -142,8 +142,9 @@ class OrderItemSerializer(serializers.ModelSerializer):
                 except Exception:
                     return str(img)
             try:
-                first_gal = prod.gallery_images.first()
-                if first_gal:
+                gallery = list(prod.gallery_images.all())
+                if gallery:
+                    first_gal = gallery[0]
                     if first_gal.image_file:
                         try:
                             return first_gal.image_file.url
@@ -153,6 +154,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
                         return first_gal.image_url
             except Exception:
                 pass
+
         return "/images/figure-samurai-red.svg"
 
     def get_sku(self, obj):
