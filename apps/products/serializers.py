@@ -178,6 +178,7 @@ class ProductSerializer(serializers.ModelSerializer):
     categoryPath = serializers.SerializerMethodField(read_only=True)
     hasLots = serializers.SerializerMethodField(read_only=True)
     activeLot = serializers.SerializerMethodField(read_only=True)
+    activeLots = serializers.SerializerMethodField(read_only=True)
     lotsCount = serializers.SerializerMethodField(read_only=True)
 
     def get_hasLots(self, obj):
@@ -204,6 +205,39 @@ class ProductSerializer(serializers.ModelSerializer):
             'remainingQuantity': lot.remaining_quantity,
             'initialQuantity': lot.initial_quantity,
         }
+
+    def get_activeLots(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'lots' in obj._prefetched_objects_cache:
+            active_lots = [l for l in obj.lots.all() if l.is_active and (l.remaining_quantity or 0) > 0]
+            lots = sorted(active_lots, key=lambda l: (l.created_at, l.id))
+        else:
+            lots = list(obj.lots.filter(is_active=True, remaining_quantity__gt=0).order_by('created_at', 'id'))
+
+        result = []
+        for lot in lots:
+            lot_disc = re.sub(r'[^0-9.]', '', str(lot.discounted_price or ''))
+            try:
+                disc_val = float(lot_disc)
+            except (ValueError, TypeError):
+                disc_val = 0.0
+
+            lot_mrp = re.sub(r'[^0-9.]', '', str(lot.mrp or ''))
+            try:
+                mrp_val = float(lot_mrp)
+            except (ValueError, TypeError):
+                mrp_val = 0.0
+
+            selling_price = disc_val if disc_val > 0 else mrp_val
+            result.append({
+                'id': lot.id,
+                'lotNumber': lot.lot_number,
+                'remainingQuantity': lot.remaining_quantity,
+                'mrp': lot.mrp,
+                'discountedPrice': lot.discounted_price,
+                'tradePrice': lot.trade_price,
+                'sellingPrice': selling_price,
+            })
+        return result
 
     def get_lotsCount(self, obj):
         if hasattr(obj, '_prefetched_objects_cache') and 'lots' in obj._prefetched_objects_cache:
