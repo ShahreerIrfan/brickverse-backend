@@ -276,10 +276,6 @@ class OrderListView(APIView):
         else:
             total_amount = max(0.0, float(data.get('total_amount') or 0))
 
-        # Check if any item in this order is a pre-order (stock <= 0).
-        # Rule: If even 1 product in an order is a pre-order, the entire order is considered
-        # a pre-order order, and NO stock is deducted at checkout time for any item.
-        order_has_preorder = any(r["is_preorder"] for r in resolved_items)
 
         # Everything below is one transaction: if any grouped product can't be
         # fulfilled (a child ran short), the order and every deduction made so
@@ -302,12 +298,13 @@ class OrderListView(APIView):
                 for r_item in resolved_items:
                     prod = r_item["prod"]
                     qty = r_item["qty"]
-                    # If the order contains any pre-orders, mark all items as pre-order (stock not deducted yet)
-                    item_is_preorder = True if order_has_preorder else r_item["is_preorder"]
+                    # An item is a pre-order only if that specific product is out of stock.
+                    # In-stock products must NOT be marked as pre-orders and deduct stock immediately.
+                    item_is_preorder = r_item["is_preorder"]
 
-                    # Deduct stock immediately ONLY if this is a normal order (NO pre-orders at all)
+                    # Deduct stock immediately for in-stock products upon placing the order
                     deductions = []
-                    if prod and status_val != 'cancelled' and not order_has_preorder:
+                    if prod and status_val != 'cancelled' and not item_is_preorder:
                         try:
                             deductions = deduct_stock(prod, qty)
                         except InsufficientStock:
