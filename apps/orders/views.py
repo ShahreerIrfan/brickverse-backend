@@ -220,9 +220,10 @@ class OrderListView(APIView):
                     for gi in prod.group_items.select_related('child')
                 ]
 
-            is_preorder = bool(prod and not prod.is_grouped and (prod.stock or 0) <= 0)
-            if 'isPreorder' in item:
-                is_preorder = bool(item.get('isPreorder')) and (not prod or (prod.stock or 0) <= 0)
+            is_preorder = bool(
+                (prod and not prod.is_grouped and (prod.stock or 0) <= 0)
+                or item.get('isPreorder')
+            )
 
             resolved_items.append({
                 "prod": prod,
@@ -275,6 +276,11 @@ class OrderListView(APIView):
         else:
             total_amount = max(0.0, float(data.get('total_amount') or 0))
 
+        # Check if any item in this order is a pre-order (stock <= 0).
+        # Rule: If even 1 product in an order is a pre-order, the entire order is considered
+        # a pre-order order, and NO stock is deducted at checkout time for any item.
+        order_has_preorder = any(r["is_preorder"] for r in resolved_items)
+
         # Everything below is one transaction: if any grouped product can't be
         # fulfilled (a child ran short), the order and every deduction made so
         # far roll back together instead of leaving a half-created order.
@@ -296,12 +302,12 @@ class OrderListView(APIView):
                 for r_item in resolved_items:
                     prod = r_item["prod"]
                     qty = r_item["qty"]
-                    is_preorder = r_item["is_preorder"]
+                    # If the order contains any pre-orders, mark all items as pre-order (stock not deducted yet)
+                    item_is_preorder = True if order_has_preorder else r_item["is_preorder"]
 
-                    # When an order is placed (with status pending or any non-cancelled status),
-                    # immediately deduct the ordered quantity from the product stock/lots (FIFO)!
+                    # Deduct stock immediately ONLY if this is a normal order (NO pre-orders at all)
                     deductions = []
-                    if prod and status_val != 'cancelled' and not is_preorder:
+                    if prod and status_val != 'cancelled' and not order_has_preorder:
                         try:
                             deductions = deduct_stock(prod, qty)
                         except InsufficientStock:
@@ -326,7 +332,7 @@ class OrderListView(APIView):
                             price=r_item["price_val"],
                             quantity=first_ded["quantity"],
                             bundle_items=r_item["bundle_items"],
-                            is_preorder=is_preorder,
+                            is_preorder=item_is_preorder,
                             lot=first_ded.get("lot"),
                             lot_number=first_ded.get("lot_number", ""),
                             trade_price=first_ded.get("trade_price", ""),
@@ -344,7 +350,7 @@ class OrderListView(APIView):
                                 price=extra_price_val,
                                 quantity=extra_ded["quantity"],
                                 bundle_items=r_item["bundle_items"],
-                                is_preorder=is_preorder,
+                                is_preorder=item_is_preorder,
                                 lot=extra_ded.get("lot"),
                                 lot_number=extra_ded.get("lot_number", ""),
                                 trade_price=extra_ded.get("trade_price", ""),
@@ -357,7 +363,7 @@ class OrderListView(APIView):
                             price=r_item["price_val"],
                             quantity=qty,
                             bundle_items=r_item["bundle_items"],
-                            is_preorder=is_preorder,
+                            is_preorder=item_is_preorder,
                             trade_price=prod.trade_price if prod else "",
                         )
         except InsufficientStock as exc:
@@ -406,6 +412,89 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
         new_status = str(raw_new_status or '').strip().lower()
 
         with transaction.atomic():
+            valid_statuses = [s[0] for s in Order.STATUS_CHOICES]
+
+            # 1. FULFILL PRE-ORDERS ON STATUS CHANGE:
+            # When admin changes order status to an active status (processing, shipped, delivered)
+            # from pending or unfulfilled state:
+            # - Check whether all pre-ordered items are now available in stock.
+            # - If any pre-ordered item does NOT have enough stock: REJECT status change!
+            # - If all pre-ordered items are now in stock: DEDUCT stock and set is_preorder=False!
+            preorder_items = [it for it in order.items.all() if it.is_preorder]
+            if preorder_items and new_status != 'cancelled' and new_status != old_status and new_status in valid_statuses:
+                unfulfilled_errors = []
+                for item in preorder_items:
+                    prod = item.product
+                    if not prod and getattr(item, 'product_id', None):
+                        prod = Product.objects.filter(id=item.product_id).first()
+                    if not prod and item.product_name:
+                        prod = Product.objects.filter(name__iexact=item.product_name).first() or Product.objects.filter(slug=slugify(item.product_name)).first()
+
+                    if not prod:
+                        continue
+
+                    locked_p = Product.objects.select_for_update().filter(pk=prod.pk).first()
+                    if not locked_p:
+                        continue
+
+                    if locked_p.is_grouped:
+                        for gi in locked_p.group_items.select_related('child'):
+                            need = gi.quantity * item.quantity
+                            have = gi.child.stock or 0
+                            if have < need:
+                                unfulfilled_errors.append(
+                                    f"'{locked_p.name}' component '{gi.child.name}' (Required: {need}, Available: {have})"
+                                )
+                    else:
+                        avail = locked_p.stock or 0
+                        if avail < item.quantity:
+                            unfulfilled_errors.append(
+                                f"'{locked_p.name}' (Required: {item.quantity}, Available: {avail})"
+                            )
+
+                if unfulfilled_errors:
+                    err_msg = (
+                        f"Cannot change order status to '{new_status.capitalize()}': "
+                        f"Pre-ordered product(s) are awaiting restock: {', '.join(unfulfilled_errors)}. "
+                        f"Please restock before fulfilling."
+                    )
+                    return Response({"error": err_msg}, status=status.HTTP_400_BAD_REQUEST)
+
+                # All pre-orders now have sufficient stock available! Deduct stock and mark fulfilled:
+                for item in preorder_items:
+                    prod = item.product
+                    if not prod and getattr(item, 'product_id', None):
+                        prod = Product.objects.filter(id=item.product_id).first()
+                    if not prod and item.product_name:
+                        prod = Product.objects.filter(name__iexact=item.product_name).first() or Product.objects.filter(slug=slugify(item.product_name)).first()
+                    if prod:
+                        deductions = []
+                        try:
+                            deductions = deduct_stock(prod, item.quantity)
+                        except Exception:
+                            try:
+                                locked_p = Product.objects.select_for_update().get(pk=prod.pk)
+                                if locked_p.stock is not None:
+                                    locked_p.stock = max(0, locked_p.stock - item.quantity)
+                                    locked_p.save(update_fields=['stock'])
+                            except Exception:
+                                pass
+
+                        if deductions and len(deductions) > 0:
+                            first_ded = deductions[0]
+                            item.lot = first_ded.get("lot")
+                            item.lot_number = first_ded.get("lot_number", "")
+                            if first_ded.get("trade_price"):
+                                item.trade_price = first_ded.get("trade_price")
+
+                        item.is_preorder = False
+                        item.save()
+
+                # Invalidate prefetched items cache so OrderSerializer outputs updated items
+                if hasattr(order, '_prefetched_objects_cache'):
+                    order._prefetched_objects_cache.clear()
+
+            # 2. CANCELLATION RESTOCK:
             # If transitioning to 'cancelled' from an active status -> RESTOCK!
             if new_status == 'cancelled' and old_status != 'cancelled':
                 for item in order.items.all():
@@ -418,6 +507,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                         if prod:
                             restock_product(prod, item.quantity, bundle_items=item.bundle_items, lot_id=item.lot_id)
 
+            # 3. UN-CANCELLATION DEDUCT:
             # If transitioning from 'cancelled' back to an active status -> DEDUCT STOCK!
             elif old_status == 'cancelled' and new_status != 'cancelled':
                 for item in order.items.all():
@@ -433,7 +523,6 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                             except Exception:
                                 pass
 
-            valid_statuses = [s[0] for s in Order.STATUS_CHOICES]
             if new_status in valid_statuses:
                 order.status = new_status
             if 'tracking_number' in request.data:
