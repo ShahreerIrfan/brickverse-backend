@@ -1,4 +1,6 @@
 import uuid
+import re
+from decimal import Decimal
 from rest_framework import generics, status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -321,36 +323,28 @@ class OrderListView(APIView):
                                 pass
 
                     if deductions and len(deductions) > 0:
-                        first_ded = deductions[0]
-                        OrderItem.objects.create(
-                            order=order,
-                            product=prod,
-                            product_name=r_item["item_name"],
-                            price=r_item["price_val"],
-                            quantity=first_ded["quantity"],
-                            bundle_items=r_item["bundle_items"],
-                            is_preorder=item_is_preorder,
-                            lot=first_ded.get("lot"),
-                            lot_number=first_ded.get("lot_number", ""),
-                            trade_price=first_ded.get("trade_price", ""),
-                        )
-                        for extra_ded in deductions[1:]:
-                            extra_price = extra_ded.get("mrp") or r_item["price_val"]
+                        for ded in deductions:
+                            ded_price = ded.get("selling_price")
+                            if ded_price is None or float(ded_price) <= 0:
+                                ded_price = ded.get("mrp")
                             try:
-                                extra_price_val = float(re.sub(r'[^0-9.]', '', str(extra_price)))
+                                ded_price_val = float(re.sub(r'[^0-9.]', '', str(ded_price)))
                             except Exception:
-                                extra_price_val = r_item["price_val"]
+                                ded_price_val = r_item["price_val"]
+                            if ded_price_val <= 0:
+                                ded_price_val = r_item["price_val"]
+
                             OrderItem.objects.create(
                                 order=order,
                                 product=prod,
                                 product_name=r_item["item_name"],
-                                price=extra_price_val,
-                                quantity=extra_ded["quantity"],
+                                price=ded_price_val,
+                                quantity=ded["quantity"],
                                 bundle_items=r_item["bundle_items"],
                                 is_preorder=item_is_preorder,
-                                lot=extra_ded.get("lot"),
-                                lot_number=extra_ded.get("lot_number", ""),
-                                trade_price=extra_ded.get("trade_price", ""),
+                                lot=ded.get("lot"),
+                                lot_number=ded.get("lot_number", ""),
+                                trade_price=ded.get("trade_price", ""),
                             )
                     else:
                         OrderItem.objects.create(
@@ -363,6 +357,16 @@ class OrderListView(APIView):
                             is_preorder=item_is_preorder,
                             trade_price=prod.trade_price if prod else "",
                         )
+
+                # Authoritative total recalculation from created OrderItems:
+                # If order took quantities from multiple lots at different prices,
+                # update order.total_amount so it matches (items_subtotal - applied_discount + shipping_cost).
+                if not (is_admin and 'total_amount' in data and data.get('total_amount') is not None):
+                    from decimal import Decimal
+                    actual_items_subtotal = sum(Decimal(str(oi.price)) * oi.quantity for oi in order.items.all())
+                    final_total = max(Decimal('0.00'), actual_items_subtotal - Decimal(str(applied_discount))) + Decimal(str(shipping_cost))
+                    order.total_amount = final_total
+                    order.save(update_fields=['total_amount'])
         except InsufficientStock as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -479,13 +483,40 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
                         if deductions and len(deductions) > 0:
                             first_ded = deductions[0]
+                            item.quantity = first_ded["quantity"]
                             item.lot = first_ded.get("lot")
                             item.lot_number = first_ded.get("lot_number", "")
                             if first_ded.get("trade_price"):
                                 item.trade_price = first_ded.get("trade_price")
+                            ded_price = first_ded.get("selling_price")
+                            if ded_price is not None and float(ded_price) > 0:
+                                item.price = ded_price
+                            item.is_preorder = False
+                            item.save()
 
-                        item.is_preorder = False
-                        item.save()
+                            for extra_ded in deductions[1:]:
+                                extra_price = extra_ded.get("selling_price")
+                                if extra_price is None or float(extra_price) <= 0:
+                                    extra_price = extra_ded.get("mrp") or item.price
+                                try:
+                                    extra_price_val = float(re.sub(r'[^0-9.]', '', str(extra_price)))
+                                except Exception:
+                                    extra_price_val = float(item.price)
+                                OrderItem.objects.create(
+                                    order=order,
+                                    product=prod,
+                                    product_name=item.product_name,
+                                    price=extra_price_val,
+                                    quantity=extra_ded["quantity"],
+                                    bundle_items=item.bundle_items,
+                                    is_preorder=False,
+                                    lot=extra_ded.get("lot"),
+                                    lot_number=extra_ded.get("lot_number", ""),
+                                    trade_price=extra_ded.get("trade_price", ""),
+                                )
+                        else:
+                            item.is_preorder = False
+                            item.save()
 
                 # Invalidate prefetched items cache so OrderSerializer outputs updated items
                 if hasattr(order, '_prefetched_objects_cache'):

@@ -1,4 +1,5 @@
 import os
+import re
 import random
 import uuid
 from django.db import models
@@ -345,10 +346,9 @@ def sync_product_from_active_lot(product):
             update_fields.extend(['regular_price', 'original_price'])
 
             # Discounted price handling
-            lot_disc = str(active_lot.discounted_price or '').replace('৳', '').replace(',', '').strip()
             try:
-                disc_val = float(lot_disc)
-            except ValueError:
+                disc_val = float(re.sub(r'[^0-9.]', '', str(active_lot.discounted_price or '')))
+            except (ValueError, TypeError):
                 disc_val = 0.0
 
             if disc_val > 0 and active_lot.discounted_price != active_lot.mrp:
@@ -431,6 +431,18 @@ def deduct_stock(product, qty):
             lot.remaining_quantity -= take
             remaining_to_deduct -= take
             lot.save(update_fields=['remaining_quantity', 'updated_at'])
+            try:
+                disc_val = float(re.sub(r'[^0-9.]', '', str(lot.discounted_price or '')))
+            except (ValueError, TypeError):
+                disc_val = 0.0
+
+            try:
+                mrp_val = float(re.sub(r'[^0-9.]', '', str(lot.mrp or '')))
+            except (ValueError, TypeError):
+                mrp_val = 0.0
+
+            selling_price = disc_val if disc_val > 0 else mrp_val
+
             deductions.append({
                 'lot': lot,
                 'lot_id': lot.id,
@@ -438,6 +450,8 @@ def deduct_stock(product, qty):
                 'quantity': take,
                 'trade_price': lot.trade_price,
                 'mrp': lot.mrp,
+                'discounted_price': lot.discounted_price,
+                'selling_price': selling_price,
             })
 
         # Sync the product's active lot, prices, and stock
