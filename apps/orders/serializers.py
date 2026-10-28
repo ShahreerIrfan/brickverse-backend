@@ -65,7 +65,9 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     lotId = serializers.IntegerField(source='lot_id', read_only=True, default=None)
     lotNumber = serializers.CharField(source='lot_number', read_only=True, default="")
-    tradePrice = serializers.CharField(source='trade_price', read_only=True, default="")
+    tradePrice = serializers.SerializerMethodField(read_only=True)
+    trade_price = serializers.SerializerMethodField(read_only=True)
+    netIncome = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = OrderItem
@@ -86,7 +88,51 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'lotId',
             'lotNumber',
             'tradePrice',
+            'trade_price',
+            'netIncome',
         ]
+
+    def get_tradePrice(self, obj):
+        import re
+        tp_str = str(obj.trade_price or '').strip()
+        val = 0.0
+        try:
+            val = float(re.sub(r'[^0-9.]', '', tp_str))
+        except (ValueError, TypeError):
+            val = 0.0
+
+        if val <= 0:
+            if obj.lot and obj.lot.trade_price:
+                try:
+                    val = float(re.sub(r'[^0-9.]', '', str(obj.lot.trade_price or '')))
+                except (ValueError, TypeError):
+                    pass
+            if val <= 0:
+                prod = self._get_product_instance(obj)
+                if prod and prod.trade_price:
+                    try:
+                        val = float(re.sub(r'[^0-9.]', '', str(prod.trade_price or '')))
+                    except (ValueError, TypeError):
+                        pass
+
+        return f"৳{val:,.2f}" if val > 0 else "৳0.00"
+
+    def get_trade_price(self, obj):
+        return self.get_tradePrice(obj)
+
+    def get_netIncome(self, obj):
+        import re
+        try:
+            sell_price = float(obj.price or 0.0)
+        except Exception:
+            sell_price = 0.0
+        tp_str = self.get_tradePrice(obj)
+        try:
+            tp_val = float(re.sub(r'[^0-9.]', '', tp_str))
+        except Exception:
+            tp_val = 0.0
+        qty = int(obj.quantity or 1)
+        return round((sell_price - tp_val) * qty, 2)
 
 
     def _get_product_instance(self, obj):
@@ -168,6 +214,9 @@ class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     shipping_cost = serializers.SerializerMethodField()
     discount = serializers.SerializerMethodField()
+    net_income = serializers.SerializerMethodField()
+    netIncome = serializers.SerializerMethodField()
+    total_tp = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -181,12 +230,74 @@ class OrderSerializer(serializers.ModelSerializer):
             'total_amount',
             'shipping_cost',
             'discount',
+            'net_income',
+            'netIncome',
+            'total_tp',
             'status',
             'tracking_number',
             'carrier',
             'created_at',
             'items',
         ]
+
+    def _compute_order_profit(self, obj):
+        import re
+        total_selling = 0.0
+        total_tp = 0.0
+        items = list(obj.items.all())
+        for it in items:
+            try:
+                price = float(it.price or 0.0)
+            except (ValueError, TypeError):
+                price = 0.0
+
+            raw_tp = it.trade_price
+            clean_tp = re.sub(r'[^0-9.]', '', str(raw_tp or ''))
+            try:
+                tp = float(clean_tp)
+            except (ValueError, TypeError):
+                tp = 0.0
+
+            if tp <= 0:
+                if it.lot and it.lot.trade_price:
+                    try:
+                        tp = float(re.sub(r'[^0-9.]', '', str(it.lot.trade_price or '')))
+                    except (ValueError, TypeError):
+                        pass
+                if tp <= 0:
+                    prod = getattr(it, 'product', None)
+                    if not prod and getattr(it, 'product_id', None):
+                        try:
+                            from apps.products.models import Product
+                            prod = Product.objects.filter(id=it.product_id).first()
+                        except Exception:
+                            pass
+                    if prod and prod.trade_price:
+                        try:
+                            tp = float(re.sub(r'[^0-9.]', '', str(prod.trade_price or '')))
+                        except (ValueError, TypeError):
+                            pass
+
+            qty = it.quantity or 1
+            total_selling += (price * qty)
+            total_tp += (tp * qty)
+
+        discount = self.get_discount(obj) or 0.0
+        net = total_selling - total_tp - discount
+        return round(net, 2), round(total_tp, 2)
+
+    def get_net_income(self, obj):
+        if getattr(obj, 'status', None) == 'cancelled':
+            return 0.0
+        net, _ = self._compute_order_profit(obj)
+        return net
+
+    def get_netIncome(self, obj):
+        return self.get_net_income(obj)
+
+    def get_total_tp(self, obj):
+        _, tp = self._compute_order_profit(obj)
+        return tp
 
     def get_shipping_cost(self, obj):
         cost = getattr(obj, 'shipping_cost', None)
