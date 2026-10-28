@@ -301,6 +301,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'reviews_list',
             'hasLots',
             'activeLot',
+            'activeLots',
             'lotsCount',
         ]
         extra_kwargs = {
