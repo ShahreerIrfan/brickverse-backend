@@ -600,6 +600,15 @@ class AdminDashboardStatsView(APIView):
         total_subcategories = Category.objects.filter(parent__isnull=False).count()
         avg_rating = ProductReview.objects.aggregate(avg=Avg('rating'))['avg'] or 4.8
 
+        # Calculate summation of all orders net income (excluding cancelled)
+        active_orders = Order.objects.exclude(status='cancelled').prefetch_related('items__lot', 'items__product')
+        total_net_income = 0.0
+        order_serializer_instance = OrderSerializer()
+        for ord_obj in active_orders:
+            net, _ = order_serializer_instance._compute_order_profit(ord_obj)
+            total_net_income += net
+        total_net_income = round(total_net_income, 2)
+
         # Order status distribution
         status_counts = Order.objects.values('status').annotate(count=Count('id'))
         status_dist = {item['status']: item['count'] for item in status_counts}
@@ -771,6 +780,7 @@ class AdminDashboardStatsView(APIView):
         return Response({
             "stats": {
                 "total_revenue": float(total_revenue),
+                "total_net_income": float(total_net_income),
                 "total_orders": total_orders,
                 "total_customers": total_customers,
                 "total_users": total_users,
