@@ -99,6 +99,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class ProductGalleryImageSerializer(serializers.ModelSerializer):
+    image_file = serializers.FileField(required=False, allow_null=True)
     imageUrl = serializers.SerializerMethodField()
 
     class Meta:
@@ -158,6 +159,7 @@ class ProductLotSerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
+    image_file = serializers.FileField(required=False, allow_null=True)
     categoryColor = serializers.CharField(source='category_color', required=False, allow_blank=True)
     cardBg = serializers.CharField(source='card_bg', required=False, allow_blank=True)
     originalPrice = serializers.CharField(source='original_price', required=False, allow_null=True, allow_blank=True)
@@ -450,9 +452,12 @@ class ProductSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def _share_image_path(instance):
-        if instance.image and instance.image_file.name != instance.image.name:
-            Product.objects.filter(pk=instance.pk).update(image_file=instance.image.name)
-            instance.image_file.name = instance.image.name
+        image_name = getattr(instance.image, 'name', '') or ''
+        image_file_name = getattr(instance.image_file, 'name', '') or ''
+        if image_name and image_file_name != image_name:
+            Product.objects.filter(pk=instance.pk).update(image_file=image_name)
+            if hasattr(instance, 'image_file'):
+                instance.image_file.name = image_name
 
     @transaction.atomic
     def create(self, validated_data):

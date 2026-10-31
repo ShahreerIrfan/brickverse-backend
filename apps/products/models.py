@@ -4,6 +4,11 @@ import random
 import uuid
 from django.db import models
 from django.utils.text import slugify
+from django.core.validators import FileExtensionValidator
+
+validate_image_extension = FileExtensionValidator(
+    allowed_extensions=['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'avif', 'heic', 'heif', 'bmp', 'tif', 'tiff']
+)
 
 
 ALLOWED_UPLOAD_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'}
@@ -114,8 +119,8 @@ class Product(models.Model):
     subcategory = models.ForeignKey(Category, related_name='products', on_delete=models.SET_NULL, null=True, blank=True)
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True)
-    image = models.ImageField(upload_to=product_image_upload_to, max_length=255, blank=True, null=True)
-    image_file = models.ImageField(upload_to=product_image_upload_to, max_length=255, blank=True, null=True)
+    image = models.FileField(upload_to=product_image_upload_to, max_length=255, blank=True, null=True, validators=[validate_image_extension])
+    image_file = models.FileField(upload_to=product_image_upload_to, max_length=255, blank=True, null=True, validators=[validate_image_extension])
     card_bg = models.CharField(max_length=20, default="#FFEAF0")
     rating = models.FloatField(default=5.0)
     reviews = models.IntegerField(default=0)
@@ -259,7 +264,7 @@ class ProductLot(models.Model):
 
 class ProductGalleryImage(models.Model):
     product = models.ForeignKey(Product, related_name='gallery_images', on_delete=models.CASCADE)
-    image_file = models.ImageField(upload_to=product_gallery_upload_to, max_length=255, blank=True, null=True)
+    image_file = models.FileField(upload_to=product_gallery_upload_to, max_length=255, blank=True, null=True, validators=[validate_image_extension])
     image_url = models.CharField(max_length=500, blank=True)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
