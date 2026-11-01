@@ -78,3 +78,4 @@ class SecurityAssessmentRegressionTests(TestCase):
         )
         resp = NewsletterSubscribeView.as_view()(req)
         self.assertIn(resp.status_code, (200, 201))
+

@@ -585,23 +585,94 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 class AdminDashboardStatsView(APIView):
     permission_classes = [IsAdminRole]
     def get(self, request):
-        from datetime import timedelta
+        from datetime import datetime, timedelta
         from django.utils import timezone
         from apps.products.models import Product, Category, ProductReview
         from apps.users.models import CustomerUser, User
         from django.db.models import Sum, Avg, Count, F, ExpressionWrapper, DecimalField
 
-        total_orders = Order.objects.count()
-        total_revenue = Order.objects.exclude(status='cancelled').aggregate(total=Sum('total_amount'))['total'] or 0
-        total_customers = CustomerUser.objects.count()
+        now = timezone.now()
+        today = now.date()
+
+        # Date range filtering (Default: 'this_month')
+        range_param = request.query_params.get('range', 'this_month').strip().lower()
+        start_date_param = request.query_params.get('start_date', '').strip()
+        end_date_param = request.query_params.get('end_date', '').strip()
+
+        start_date = None
+        end_date = None
+        range_label = "This Month"
+
+        if start_date_param and end_date_param:
+            try:
+                start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+                range_label = f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d, %Y')}"
+                range_param = "custom"
+            except ValueError:
+                start_date = None
+                end_date = None
+
+        if not start_date and not end_date:
+            if range_param == 'today':
+                start_date = today
+                end_date = today
+                range_label = "Today"
+            elif range_param == 'last_7_days':
+                start_date = today - timedelta(days=6)
+                end_date = today
+                range_label = "Last 7 Days"
+            elif range_param == 'last_30_days':
+                start_date = today - timedelta(days=29)
+                end_date = today
+                range_label = "Last 30 Days"
+            elif range_param == 'this_year':
+                start_date = today.replace(month=1, day=1)
+                end_date = today
+                range_label = "This Year"
+            elif range_param == 'all_time':
+                start_date = None
+                end_date = None
+                range_label = "All Time"
+            else:
+                # Default: This Month (Current Month)
+                start_date = today.replace(day=1)
+                end_date = today
+                range_label = "This Month"
+                range_param = "this_month"
+
+        orders_qs = Order.objects.all()
+        customers_qs = CustomerUser.objects.all()
+
+        try:
+            from apps.expense.models import Expense
+            expenses_qs = Expense.objects.all()
+        except Exception:
+            expenses_qs = None
+
+        if start_date:
+            orders_qs = orders_qs.filter(created_at__date__gte=start_date)
+            customers_qs = customers_qs.filter(created_at__date__gte=start_date)
+            if expenses_qs is not None:
+                expenses_qs = expenses_qs.filter(date__gte=start_date)
+
+        if end_date:
+            orders_qs = orders_qs.filter(created_at__date__lte=end_date)
+            customers_qs = customers_qs.filter(created_at__date__lte=end_date)
+            if expenses_qs is not None:
+                expenses_qs = expenses_qs.filter(date__lte=end_date)
+
+        total_orders = orders_qs.count()
+        total_revenue = orders_qs.exclude(status='cancelled').aggregate(total=Sum('total_amount'))['total'] or 0
+        total_customers = customers_qs.count()
         total_users = User.objects.count()
         total_products = Product.objects.count()
         total_categories = Category.objects.filter(parent__isnull=True).count()
         total_subcategories = Category.objects.filter(parent__isnull=False).count()
         avg_rating = ProductReview.objects.aggregate(avg=Avg('rating'))['avg'] or 4.8
 
-        # Calculate summation of all orders net income (excluding cancelled)
-        active_orders = Order.objects.exclude(status='cancelled').prefetch_related('items__lot', 'items__product')
+        # Calculate summation of orders net income in selected range (excluding cancelled)
+        active_orders = orders_qs.exclude(status='cancelled').prefetch_related('items__lot', 'items__product')
         order_net_income = 0.0
         order_serializer_instance = OrderSerializer()
         for ord_obj in active_orders:
@@ -609,19 +680,17 @@ class AdminDashboardStatsView(APIView):
             order_net_income += net
         order_net_income = round(order_net_income, 2)
 
-        # Aggregate total expenses to calculate actual net income (Net income - Expenses)
-        try:
-            from apps.expense.models import Expense
-            total_expense_agg = Expense.objects.aggregate(total=Sum('amount'))['total'] or 0
+        # Aggregate total expenses in selected range to calculate actual net income (Net income - Expenses)
+        total_expenses = 0.0
+        if expenses_qs is not None:
+            total_expense_agg = expenses_qs.aggregate(total=Sum('amount'))['total'] or 0
             total_expenses = round(float(total_expense_agg), 2)
-        except Exception:
-            total_expenses = 0.0
 
         # Actual Net Income = Orders Net Income - Total Expenses
         actual_net_income = round(order_net_income - total_expenses, 2)
 
         # Order status distribution
-        status_counts = Order.objects.values('status').annotate(count=Count('id'))
+        status_counts = orders_qs.values('status').annotate(count=Count('id'))
         status_dist = {item['status']: item['count'] for item in status_counts}
         
         delivered_count = status_dist.get('delivered', 0)
@@ -806,6 +875,17 @@ class AdminDashboardStatsView(APIView):
                 "commission_est": round(float(total_revenue) * 0.12, 2) if float(total_revenue) > 0 else 316.0,
                 "growth_percent": growth_pct,
                 "total_7d_revenue": total_current_7d,
+                "date_filter": {
+                    "range": range_param,
+                    "label": range_label,
+                    "start_date": str(start_date) if start_date else None,
+                    "end_date": str(end_date) if end_date else None,
+                },
+                "all_time": {
+                    "total_orders": Order.objects.count(),
+                    "total_revenue": float(Order.objects.exclude(status='cancelled').aggregate(total=Sum('total_amount'))['total'] or 0),
+                    "total_customers": CustomerUser.objects.count(),
+                }
             },
             "status_distribution": {
                 "delivered": delivered_count,
