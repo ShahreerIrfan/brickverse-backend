@@ -48,3 +48,4 @@ class ProductSvgUploadTestCase(TestCase):
         self.assertTrue(".svg" in rep["image"])
         self.assertEqual(len(rep["gallery_images"]), 1)
         self.assertTrue(".svg" in rep["gallery_images"][0]["imageUrl"])
+

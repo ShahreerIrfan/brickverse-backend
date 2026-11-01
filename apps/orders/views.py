@@ -602,12 +602,23 @@ class AdminDashboardStatsView(APIView):
 
         # Calculate summation of all orders net income (excluding cancelled)
         active_orders = Order.objects.exclude(status='cancelled').prefetch_related('items__lot', 'items__product')
-        total_net_income = 0.0
+        order_net_income = 0.0
         order_serializer_instance = OrderSerializer()
         for ord_obj in active_orders:
             net, _ = order_serializer_instance._compute_order_profit(ord_obj)
-            total_net_income += net
-        total_net_income = round(total_net_income, 2)
+            order_net_income += net
+        order_net_income = round(order_net_income, 2)
+
+        # Aggregate total expenses to calculate actual net income (Net income - Expenses)
+        try:
+            from apps.expense.models import Expense
+            total_expense_agg = Expense.objects.aggregate(total=Sum('amount'))['total'] or 0
+            total_expenses = round(float(total_expense_agg), 2)
+        except Exception:
+            total_expenses = 0.0
+
+        # Actual Net Income = Orders Net Income - Total Expenses
+        actual_net_income = round(order_net_income - total_expenses, 2)
 
         # Order status distribution
         status_counts = Order.objects.values('status').annotate(count=Count('id'))
@@ -780,7 +791,9 @@ class AdminDashboardStatsView(APIView):
         return Response({
             "stats": {
                 "total_revenue": float(total_revenue),
-                "total_net_income": float(total_net_income),
+                "total_net_income": float(actual_net_income),
+                "order_net_income": float(order_net_income),
+                "total_expenses": float(total_expenses),
                 "total_orders": total_orders,
                 "total_customers": total_customers,
                 "total_users": total_users,
