@@ -583,7 +583,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class AdminDashboardStatsView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsAdminRole]
     def get(self, request):
         from datetime import timedelta
         from django.utils import timezone

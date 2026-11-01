@@ -73,16 +73,13 @@ MIDDLEWARE = [
     'apps.logs.middleware.RequestLoggingMiddleware',
 ]
 
-# CORS and CSRF Configuration
-CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower() in ('true', '1', 't')
+# CORS and CSRF Configuration (Strictly restricted, no arbitrary reflection - F-01)
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.kawaiisubete\.com$",
-    r"^https://kawaiisubete\.com$",
-    r"^http://.*\.kawaiisubete\.com$",
-    r"^http://kawaiisubete\.com$",
-    r"^https://.*\.eezzymart\.tech$",
+    r"^https://([a-zA-Z0-9-]+\.)*kawaiisubete\.com$",
+    r"^https://([a-zA-Z0-9-]+\.)*eezzymart\.tech$",
     r"^http://localhost(:\d+)?$",
     r"^http://127\.0\.0\.1(:\d+)?$",
 ]
@@ -108,8 +105,6 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     'expires',
     'x-session-token',
     'x-session-key',
-    'x-user-email',
-    'x-user-id',
 ]
 
 # Reverse proxy SSL header (Traefik / Nginx / Dokploy)

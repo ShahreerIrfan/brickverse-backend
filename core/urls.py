@@ -46,6 +46,39 @@ def secure_media_serve(request, path, document_root=None, show_indexes=False):
     return response
 
 
+# F-04: Throttled Django admin login to eliminate unthrottled brute-force / credential-stuffing
+from django.core.cache import cache
+from django.http import HttpResponse
+
+_original_admin_login = admin.site.login
+
+def rate_limited_admin_login(request, extra_context=None):
+    ip = request.META.get('HTTP_CF_CONNECTING_IP') or request.META.get('REMOTE_ADDR', 'unknown')
+    cache_key = f"django_admin_login_throttle_{ip}"
+    failed_attempts = cache.get(cache_key, 0)
+    
+    if failed_attempts >= 5:
+        resp = HttpResponse(
+            "Too Many Requests: Admin login temporarily locked due to consecutive failed attempts. Please retry in 15 minutes.",
+            status=429,
+            content_type="text/plain"
+        )
+        resp['Retry-After'] = '900'
+        return resp
+
+    response = _original_admin_login(request, extra_context=extra_context)
+
+    if request.method == 'POST':
+        if response.status_code == 200:
+            cache.set(cache_key, failed_attempts + 1, timeout=900)
+        elif response.status_code in (302, 303):
+            cache.delete(cache_key)
+
+    return response
+
+admin.site.login = rate_limited_admin_login
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', APIRootView.as_view(), name='api-root'),

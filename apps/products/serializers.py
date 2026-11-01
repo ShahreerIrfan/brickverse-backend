@@ -347,6 +347,24 @@ class ProductSerializer(serializers.ModelSerializer):
         else:
             data['groupItems'] = []
             data['bundleTotal'] = None
+
+        # F-05 Wholesale price disclosure fix:
+        # Hide tradePrice and internal wholesale cost from public / non-admin users
+        request = self.context.get('request')
+        is_staff_or_admin = False
+        if request and getattr(request, 'user', None) and request.user.is_authenticated:
+            user_role = getattr(request.user, 'role', None)
+            is_staff_or_admin = (user_role == 'admin' or getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False))
+
+        if not is_staff_or_admin:
+            data.pop('tradePrice', None)
+            if 'activeLot' in data and isinstance(data['activeLot'], dict):
+                data['activeLot'].pop('tradePrice', None)
+            if 'activeLots' in data and isinstance(data['activeLots'], list):
+                for lot_info in data['activeLots']:
+                    if isinstance(lot_info, dict):
+                        lot_info.pop('tradePrice', None)
+
         return data
 
     def validate_groupItems(self, value):

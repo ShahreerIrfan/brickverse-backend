@@ -1,7 +1,8 @@
-from rest_framework import generics, status
+from rest_framework import generics, status, permissions
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from apps.users.permissions import IsAdminRole
 from .models import NewsletterSubscriber, NavLink, StoreInfo, FooterColumn, ContactMessage, HeroSlide, Coupon, PromoBanner
 from .serializers import (
@@ -16,6 +17,10 @@ from .serializers import (
 )
 
 class NewsletterSubscribeView(APIView):
+    # N-02 fix: Allow anonymous storefront visitors to subscribe to newsletter
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
         source = request.data.get('source', 'footer_banner')

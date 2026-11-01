@@ -75,18 +75,7 @@ class TokenAndSessionAuthentication(SessionAuthentication):
             if user:
                 return (user, None)
 
-        # 4. Check X-User-Email / X-User-Id headers passed by authenticated client
-        user_email = request.headers.get('X-User-Email', '').strip()
-        user_id_hdr = request.headers.get('X-User-Id', '').strip()
-        if user_email or user_id_hdr:
-            User = get_user_model()
-            user = None
-            if user_id_hdr and user_id_hdr.isdigit():
-                user = User.objects.filter(id=int(user_id_hdr), is_active=True).first()
-            if not user and user_email:
-                user = User.objects.filter(email__iexact=user_email, is_active=True).first()
-            if user:
-                return (user, None)
+        # NOTE: X-User-Email and X-User-Id headers are strictly rejected to prevent authentication bypass (F-12)
 
         # 5. Check standard Django session cookie via parent SessionAuthentication
         user_auth_tuple = super().authenticate(request)

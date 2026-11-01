@@ -259,26 +259,34 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check failed login attempts lockout
-        lockout_key = f"login_failed_attempts_{email}"
-        failed_login_attempts = cache.get(lockout_key, 0)
-        max_login_attempts = 5
-        if failed_login_attempts >= max_login_attempts:
-            return Response(
-                {"error": "Account temporarily locked due to consecutive failed login attempts. Please try again in 15 minutes."},
+        # N-03 fix: Key rate-limiting on verified Cloudflare client IP rather than spoofable X-Forwarded-For
+        client_ip = request.META.get('HTTP_CF_CONNECTING_IP') or request.META.get('REMOTE_ADDR', '127.0.0.1')
+        ip_lockout_key = f"login_failed_ip_{client_ip}"
+        email_lockout_key = f"login_failed_attempts_{email}"
+
+        failed_ip_attempts = cache.get(ip_lockout_key, 0)
+        failed_email_attempts = cache.get(email_lockout_key, 0)
+
+        if failed_email_attempts >= 5 or failed_ip_attempts >= 8:
+            resp = Response(
+                {"error": "Too many failed login attempts. Please try again in 15 minutes."},
                 status=status.HTTP_429_TOO_MANY_REQUESTS
             )
+            resp['Retry-After'] = '900'
+            return resp
 
         user = authenticate(request, email=email, password=password)
         if user is None:
-            cache.set(lockout_key, failed_login_attempts + 1, timeout=900)
+            cache.set(email_lockout_key, failed_email_attempts + 1, timeout=900)
+            cache.set(ip_lockout_key, failed_ip_attempts + 1, timeout=900)
             return Response(
                 {"error": "Invalid email or password. Please try again."},
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
         # Clear failed login attempts on successful login
-        cache.delete(lockout_key)
+        cache.delete(email_lockout_key)
+        cache.delete(ip_lockout_key)
 
         login(request, user, backend='apps.users.backends.EmailAuthBackend')
         token = generate_user_token(user)
