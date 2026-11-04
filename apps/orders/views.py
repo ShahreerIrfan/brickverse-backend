@@ -102,7 +102,26 @@ class OrderTrackView(APIView):
         if not order:
             return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(OrderSerializer(order).data)
+        return Response(OrderSerializer(order, context={'request': request}).data)
+
+
+class MyOrdersView(APIView):
+    """
+    Dedicated secure endpoint: GET /api/orders/mine/
+    Returns orders belonging to the currently authenticated user based solely on verified session/token.
+    Zero query parameter dependence; completely immune to cross-account order snooping.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Prefetch
+        prefetch_items = Prefetch(
+            'items',
+            queryset=OrderItem.objects.select_related('product').prefetch_related('product__gallery_images')
+        )
+        user_email = (request.user.email or '').strip()
+        queryset = Order.objects.filter(customer_email__iexact=user_email).prefetch_related(prefetch_items).order_by('-created_at')
+        return Response(OrderSerializer(queryset, many=True, context={'request': request}).data)
 
 
 class OrderListView(APIView):
@@ -112,32 +131,107 @@ class OrderListView(APIView):
         user = request.user if request.user and request.user.is_authenticated else None
         is_admin = bool(user and (getattr(user, 'is_admin_role', False) or user.is_staff or user.is_superuser))
 
+        if not user:
+            return Response(
+                {"error": "Authentication required to view orders."},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
         email = request.query_params.get('email')
         from django.db.models import Prefetch
         prefetch_items = Prefetch(
             'items',
             queryset=OrderItem.objects.select_related('product').prefetch_related('product__gallery_images')
         )
-        if email:
-            queryset = Order.objects.filter(customer_email__iexact=email.strip()).prefetch_related(prefetch_items).order_by('-created_at')
-            return Response(OrderSerializer(queryset, many=True).data)
 
         if is_admin:
-            queryset = Order.objects.all().prefetch_related(prefetch_items).order_by('-created_at')
-            return Response(OrderSerializer(queryset, many=True).data)
+            if email:
+                queryset = Order.objects.filter(customer_email__iexact=email.strip()).prefetch_related(prefetch_items).order_by('-created_at')
+            else:
+                queryset = Order.objects.all().prefetch_related(prefetch_items).order_by('-created_at')
+            return Response(OrderSerializer(queryset, many=True, context={'request': request}).data)
 
+        # Authenticated non-admin customer:
+        # Strictly enforce ownership. If email parameter is provided, ensure it matches request.user.email
+        user_email = (user.email or '').strip().lower()
+        if email and email.strip().lower() != user_email:
+            return Response(
+                {"error": "Access denied. You cannot view orders for another account."},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
-        # Unauthenticated / non-admin attempts to dump all customer orders are rejected
-        return Response({"error": "Authentication required to view all orders."}, status=status.HTTP_401_UNAUTHORIZED)
+        queryset = Order.objects.filter(customer_email__iexact=user_email).prefetch_related(prefetch_items).order_by('-created_at')
+        return Response(OrderSerializer(queryset, many=True, context={'request': request}).data)
 
     def post(self, request):
         import uuid
+        import re
+        from django.core.cache import cache
+
         data = request.data
-        customer_name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or data.get('customer_name', 'Valued Customer')
-        customer_email = data.get('customer_email') or data.get('email') or 'guest@kawaiisubete.com'
-        customer_phone = data.get('customer_phone') or data.get('phone', '')
+        user = request.user if request.user and request.user.is_authenticated else None
+        is_admin = bool(user and (getattr(user, 'is_admin_role', False) or user.is_staff or user.is_superuser))
+
+        # 1. Require non-empty items payload (blocks empty payload / ghost order injection)
+        items_payload = data.get('items', [])
+        if not items_payload or not isinstance(items_payload, list) or len(items_payload) == 0:
+            return Response(
+                {"error": "Order must contain at least one item."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 2. Authentication & Identity Enforcement:
+        # Regular customer checkouts MUST be authenticated.
+        if not is_admin:
+            if not user:
+                return Response(
+                    {"error": "Authentication required to place an order. Please log in."},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+            # Rate limit non-admin checkout requests (max 10 orders per 5 minutes per user/IP)
+            client_ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', '')).split(',')[0].strip()
+            rate_key = f"order_create_rate_{user.id}_{client_ip}"
+            current_count = cache.get(rate_key, 0)
+            if current_count >= 10:
+                return Response(
+                    {"error": "Too many order attempts. Please wait a few minutes before trying again."},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS
+                )
+            cache.set(rate_key, current_count + 1, timeout=300)
+
+            # Strictly forbid cross-account order injection:
+            passed_email = (data.get('customer_email') or data.get('email') or '').strip().lower()
+            auth_email = (user.email or '').strip().lower()
+            if passed_email and passed_email != auth_email:
+                return Response(
+                    {"error": "Cross-account order creation is forbidden. You cannot place orders on behalf of another user."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            customer_email = auth_email
+        else:
+            # Admin custom order creation (e.g. from CustomOrderPage for phone/walk-in customers)
+            customer_email = (data.get('customer_email') or data.get('email') or '').strip().lower()
+            if not customer_email:
+                customer_email = f"custom-{uuid.uuid4().hex[:6]}@kawaiisubete.com"
+
+        customer_name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or data.get('customer_name', '')
+        if not customer_name:
+            if user:
+                customer_name = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip() or getattr(user, 'username', 'Valued Customer')
+            else:
+                customer_name = 'Valued Customer'
+
+        customer_phone = str(data.get('customer_phone') or data.get('phone', '')).strip()
         district_val = str(data.get('district') or data.get('city') or '').strip()
-        shipping_address = f"{data.get('address', '')}, {district_val}".strip(', ') or data.get('shipping_address', 'Dhaka, Bangladesh')
+        shipping_address = f"{data.get('address', '')}, {district_val}".strip(', ') or data.get('shipping_address', '')
+
+        # Validate mandatory fields for customer checkouts
+        if not is_admin:
+            if not customer_phone:
+                return Response({"error": "Customer phone number is required."}, status=status.HTTP_400_BAD_REQUEST)
+            if not shipping_address or len(shipping_address.replace(',', '').strip()) < 3:
+                return Response({"error": "Valid delivery address is required."}, status=status.HTTP_400_BAD_REQUEST)
         
         # Authoritative server-side delivery charge policy:
         # ৳60 inside Dhaka, ৳120 for all other 63 districts.
@@ -380,7 +474,7 @@ class OrderListView(APIView):
             except Exception:
                 pass
 
-        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+        return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
 class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):

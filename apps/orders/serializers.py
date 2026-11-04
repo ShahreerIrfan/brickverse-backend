@@ -324,3 +324,19 @@ class OrderSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return 0.0
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request else None
+        is_admin = bool(user and user.is_authenticated and (getattr(user, 'is_admin_role', False) or user.is_staff or user.is_superuser))
+        if not is_admin:
+            ret.pop('net_income', None)
+            ret.pop('netIncome', None)
+            ret.pop('total_tp', None)
+            if 'items' in ret and isinstance(ret['items'], list):
+                for item in ret['items']:
+                    item.pop('trade_price', None)
+                    item.pop('lot', None)
+                    item.pop('lot_number', None)
+        return ret
