@@ -306,7 +306,7 @@ class ProductListView(generics.ListCreateAPIView):
         queryset = self.filter_queryset(self.get_queryset())
         try:
             page = max(1, int(request.query_params.get('page', 1)))
-            size = min(60, max(1, int(request.query_params.get('page_size', 20))))
+            size = min(60, max(1, int(request.query_params.get('page_size', request.query_params.get('pageSize', 20)))))
         except ValueError:
             page, size = 1, 20
         total = queryset.count()
