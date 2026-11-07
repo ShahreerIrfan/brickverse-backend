@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 EPENSE_LIST_CHOICES = (
     ('SOCIAL_MEDIA_AD_COST', 'social media ad cost'),
@@ -12,7 +13,7 @@ EPENSE_LIST_CHOICES = (
 class Expense(models.Model):
     expense_title = models.CharField(max_length=100, choices=EPENSE_LIST_CHOICES)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    date = models.DateField(auto_now_add=True)
+    date = models.DateField(default=timezone.now)
     description = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

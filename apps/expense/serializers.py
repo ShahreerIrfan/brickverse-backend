@@ -1,9 +1,11 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import Expense, EPENSE_LIST_CHOICES
 
 class ExpenseSerializer(serializers.ModelSerializer):
     expense_title_display = serializers.CharField(source='get_expense_title_display', read_only=True)
     created_by_name = serializers.SerializerMethodField(read_only=True)
+    date = serializers.DateField(required=False, default=timezone.now)
 
     class Meta:
         model = Expense

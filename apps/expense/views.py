@@ -51,18 +51,41 @@ class ExpenseCategoryChoicesView(APIView):
 
 
 class ExpenseSummaryView(APIView):
-    """Return aggregate statistics for expenses (Total, Monthly, Category Breakdown)."""
+    """Return aggregate statistics for expenses (Total, Monthly, Date Range Filtered, Category Breakdown)."""
     permission_classes = [IsAdminRole]
     def get(self, request):
         now = timezone.now()
         this_month_start = now.date().replace(day=1)
 
-        total_expense = Expense.objects.aggregate(total=Sum('amount'))['total'] or 0
-        this_month_expense = Expense.objects.filter(date__gte=this_month_start).aggregate(total=Sum('amount'))['total'] or 0
-        total_count = Expense.objects.count()
+        category = request.query_params.get('category', '').strip()
+        search = request.query_params.get('search', '').strip()
+        start_date = request.query_params.get('start_date', '').strip()
+        end_date = request.query_params.get('end_date', '').strip()
 
-        # Category Breakdown
-        breakdown = Expense.objects.values('expense_title').annotate(
+        # All-time and this-month baseline metrics
+        all_time_total = Expense.objects.aggregate(total=Sum('amount'))['total'] or 0
+        this_month_expense = Expense.objects.filter(date__gte=this_month_start).aggregate(total=Sum('amount'))['total'] or 0
+        all_time_count = Expense.objects.count()
+
+        # Filtered queryset based on date range, category, search
+        filtered_qs = Expense.objects.all()
+        is_filtered = bool(start_date or end_date or (category and category != 'all') or search)
+
+        if category and category != 'all':
+            filtered_qs = filtered_qs.filter(expense_title=category)
+        if search:
+            filtered_qs = filtered_qs.filter(description__icontains=search)
+        if start_date:
+            filtered_qs = filtered_qs.filter(date__gte=start_date)
+        if end_date:
+            filtered_qs = filtered_qs.filter(date__lte=end_date)
+
+        filtered_expense = filtered_qs.aggregate(total=Sum('amount'))['total'] or 0
+        filtered_count = filtered_qs.count()
+
+        # Category Breakdown for the active scope (or all-time if not filtered)
+        breakdown_qs = filtered_qs if is_filtered else Expense.objects.all()
+        breakdown = breakdown_qs.values('expense_title').annotate(
             total_amount=Sum('amount'),
             count=Count('id')
         ).order_by('-total_amount')
@@ -79,8 +102,13 @@ class ExpenseSummaryView(APIView):
         ]
 
         return Response({
-            "total_expense": float(total_expense),
+            "total_expense": float(all_time_total),
             "this_month_expense": float(this_month_expense),
-            "total_count": total_count,
+            "total_count": all_time_count,
+            "filtered_expense": float(filtered_expense),
+            "filtered_count": filtered_count,
+            "is_filtered": is_filtered,
+            "start_date": start_date or None,
+            "end_date": end_date or None,
             "category_breakdown": category_stats,
         })
