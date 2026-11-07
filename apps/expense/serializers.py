@@ -21,7 +21,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
 
     def get_created_by_name(self, obj):
         if obj.created_by:

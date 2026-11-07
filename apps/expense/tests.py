@@ -89,3 +89,44 @@ class ExpenseDateRangeFilterTests(TestCase):
         # Verify stored in DB with that exact date
         exp = Expense.objects.get(id=res.data["id"])
         self.assertEqual(str(exp.date), "2026-09-20")
+
+    def test_update_expense_date_with_patch(self):
+        # Create an expense with an initial date
+        exp = Expense.objects.create(
+            expense_title="OTHER_EXPENSE",
+            amount=500.00,
+            date=datetime.date(2026, 11, 7),
+            description="Testing",
+            created_by=self.admin
+        )
+        # Change the date to an earlier date
+        res = self.client.patch(f"/api/expenses/{exp.id}/", {
+            "date": "2026-10-25"
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["date"], "2026-10-25")
+        exp.refresh_from_db()
+        self.assertEqual(str(exp.date), "2026-10-25")
+        self.assertEqual(exp.created_by, self.admin)
+
+    def test_update_expense_date_with_put(self):
+        # Create an expense with an initial date
+        exp = Expense.objects.create(
+            expense_title="TRANSPORT",
+            amount=350.00,
+            date=datetime.date(2026, 11, 7),
+            description="Delivery",
+            created_by=self.admin
+        )
+        # Update via PUT with a different date
+        res = self.client.put(f"/api/expenses/{exp.id}/", {
+            "expense_title": "TRANSPORT",
+            "amount": "400.00",
+            "date": "2026-11-01",
+            "description": "Updated delivery"
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["date"], "2026-11-01")
+        exp.refresh_from_db()
+        self.assertEqual(str(exp.date), "2026-11-01")
+        self.assertEqual(exp.created_by, self.admin)
