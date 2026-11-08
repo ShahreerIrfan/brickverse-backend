@@ -43,6 +43,7 @@ def secure_media_serve(request, path, document_root=None, show_indexes=False):
     response = serve(request, path, document_root=document_root, show_indexes=show_indexes)
     response['X-Content-Type-Options'] = 'nosniff'
     response['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+    response['Cache-Control'] = 'public, max-age=31536000, immutable'
     return response
 
 
