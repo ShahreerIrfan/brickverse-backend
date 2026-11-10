@@ -652,6 +652,70 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
             if 'carrier' in request.data:
                 order.carrier = str(request.data.get('carrier') or '').strip()
 
+            from decimal import Decimal
+            if 'customer_name' in request.data:
+                order.customer_name = str(request.data.get('customer_name') or '').strip()
+            if 'customer_email' in request.data:
+                order.customer_email = str(request.data.get('customer_email') or '').strip()
+            if 'customer_phone' in request.data:
+                order.customer_phone = str(request.data.get('customer_phone') or '').strip()
+            if 'shipping_address' in request.data:
+                order.shipping_address = str(request.data.get('shipping_address') or '').strip()
+            if 'shipping_cost' in request.data:
+                try:
+                    order.shipping_cost = Decimal(str(request.data.get('shipping_cost') or '0'))
+                except Exception:
+                    pass
+            if 'total_amount' in request.data:
+                try:
+                    order.total_amount = Decimal(str(request.data.get('total_amount') or '0'))
+                except Exception:
+                    pass
+
+            if 'items' in request.data and isinstance(request.data['items'], list):
+                from apps.orders.models import OrderItem
+                incoming_item_ids = []
+                for item_data in request.data['items']:
+                    item_id = item_data.get('id')
+                    if item_id:
+                        incoming_item_ids.append(item_id)
+                        item_obj = order.items.filter(id=item_id).first()
+                        if item_obj:
+                            if 'quantity' in item_data:
+                                try:
+                                    item_obj.quantity = max(1, int(item_data['quantity']))
+                                except Exception:
+                                    pass
+                            if 'price' in item_data:
+                                try:
+                                    item_obj.price = Decimal(str(item_data['price']))
+                                except Exception:
+                                    pass
+                            if 'product_name' in item_data:
+                                item_obj.product_name = str(item_data['product_name']).strip()
+                            item_obj.save()
+                    else:
+                        p_name = str(item_data.get('product_name') or 'Custom Item').strip()
+                        qty = max(1, int(item_data.get('quantity') or 1))
+                        try:
+                            pr = Decimal(str(item_data.get('price') or '0'))
+                        except Exception:
+                            pr = Decimal('0.00')
+                        new_item = OrderItem.objects.create(
+                            order=order,
+                            product_name=p_name,
+                            quantity=qty,
+                            price=pr,
+                        )
+                        incoming_item_ids.append(new_item.id)
+
+                if incoming_item_ids:
+                    order.items.exclude(id__in=incoming_item_ids).delete()
+
+            order.save()
+            if hasattr(order, '_prefetched_objects_cache'):
+                order._prefetched_objects_cache.clear()
+
             kwargs['partial'] = True
             response = super().update(request, *args, **kwargs)
             return response

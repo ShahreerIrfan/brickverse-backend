@@ -190,3 +190,48 @@ class OrderSecurityAndOwnershipTests(TestCase):
         create_res = self.client.post("/api/orders/list/", data=json.dumps(custom_payload), content_type="application/json")
         self.assertEqual(create_res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(create_res.data["customer_email"], "walkin@example.com")
+
+    def test_admin_can_edit_all_order_fields(self):
+        """Admin can edit customer info, address, tracking, carrier, status, cost, and items."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_token}")
+        order_item = self.victim_order.items.first()
+        patch_payload = {
+            "customer_name": "Updated Customer Name",
+            "customer_email": "updated_email@example.com",
+            "customer_phone": "01999999999",
+            "shipping_address": "House 10, Road 5, Banani, Dhaka",
+            "shipping_cost": "120.00",
+            "total_amount": "620.00",
+            "tracking_number": "STEADFAST-9988",
+            "carrier": "Steadfast Courier",
+            "status": "processing",
+            "items": [
+                {
+                    "id": order_item.id,
+                    "product_name": "Goku Ultra Instinct Figure",
+                    "quantity": 2,
+                    "price": "500.00"
+                }
+            ]
+        }
+        res = self.client.patch(
+            f"/api/orders/{self.victim_order.id}/",
+            data=json.dumps(patch_payload),
+            content_type="application/json"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.victim_order.refresh_from_db()
+        self.assertEqual(self.victim_order.customer_name, "Updated Customer Name")
+        self.assertEqual(self.victim_order.customer_email, "updated_email@example.com")
+        self.assertEqual(self.victim_order.customer_phone, "01999999999")
+        self.assertEqual(self.victim_order.shipping_address, "House 10, Road 5, Banani, Dhaka")
+        self.assertEqual(float(self.victim_order.shipping_cost), 120.00)
+        self.assertEqual(float(self.victim_order.total_amount), 620.00)
+        self.assertEqual(self.victim_order.tracking_number, "STEADFAST-9988")
+        self.assertEqual(self.victim_order.carrier, "Steadfast Courier")
+        self.assertEqual(self.victim_order.status, "processing")
+
+        order_item.refresh_from_db()
+        self.assertEqual(order_item.product_name, "Goku Ultra Instinct Figure")
+        self.assertEqual(order_item.quantity, 2)
+        self.assertEqual(float(order_item.price), 500.00)
