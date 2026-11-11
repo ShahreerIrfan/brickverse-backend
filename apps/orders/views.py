@@ -674,8 +674,21 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
             if 'items' in request.data and isinstance(request.data['items'], list):
                 from apps.orders.models import OrderItem
-                from apps.products.models import Product, deduct_stock, restock_product
+                from apps.products.models import Product, ProductLot, deduct_stock, restock_product
                 import re
+
+                def get_available_stock(p):
+                    if not p:
+                        return 0
+                    if p.lots.filter(is_active=True).exists():
+                        return sum(
+                            max(0, l.remaining_quantity)
+                            for l in ProductLot.objects.select_for_update().filter(
+                                product=p, is_active=True, remaining_quantity__gt=0
+                            )
+                        )
+                    locked = Product.objects.select_for_update().filter(pk=p.pk).first()
+                    return max(0, (locked.stock if locked else p.stock) or 0)
 
                 is_active = (order.status != 'cancelled')
                 existing_items_map = {item.id: item for item in order.items.all()}
@@ -727,6 +740,19 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                             # 2) Resolve new product
                             target_prod = Product.objects.filter(id=raw_pid).first() if raw_pid else None
                             if target_prod:
+                                if is_active and not target_prod.is_grouped:
+                                    avail = get_available_stock(target_prod)
+                                    if new_qty > avail:
+                                        return Response(
+                                            {
+                                                "error": (
+                                                    f"Cannot change to {new_qty} units of '{target_prod.name}'. "
+                                                    f"Only {avail} unit(s) available in stock."
+                                                )
+                                            },
+                                            status=status.HTTP_400_BAD_REQUEST,
+                                        )
+
                                 item_obj.product = target_prod
                                 item_obj.product_name = target_prod.name
                                 item_obj.bundle_items = []
@@ -793,6 +819,20 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
                             if new_qty > old_qty:
                                 diff = new_qty - old_qty
+                                if is_active and old_prod and not old_prod.is_grouped:
+                                    avail = get_available_stock(old_prod)
+                                    if diff > avail:
+                                        return Response(
+                                            {
+                                                "error": (
+                                                    f"Cannot increase quantity for '{old_prod.name}' to {new_qty}. "
+                                                    f"Only {avail} additional unit(s) available in stock. "
+                                                    f"Maximum allowed quantity for this order is {old_qty + avail}."
+                                                )
+                                            },
+                                            status=status.HTTP_400_BAD_REQUEST,
+                                        )
+
                                 deductions = []
                                 if is_active and old_prod and not old_prod.is_grouped:
                                     try:
@@ -882,6 +922,19 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                             target_prod = Product.objects.filter(name__iexact=item_data.get('product_name')).first()
 
                         if target_prod:
+                            if is_active and not target_prod.is_grouped:
+                                avail = get_available_stock(target_prod)
+                                if new_qty > avail:
+                                    return Response(
+                                        {
+                                            "error": (
+                                                f"Cannot add {new_qty} units of '{target_prod.name}'. "
+                                                f"Only {avail} unit(s) available in stock."
+                                            )
+                                        },
+                                        status=status.HTTP_400_BAD_REQUEST,
+                                    )
+
                             deductions = []
                             if is_active and not target_prod.is_grouped:
                                 try:

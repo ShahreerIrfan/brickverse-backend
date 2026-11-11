@@ -324,3 +324,123 @@ class OrderSecurityAndOwnershipTests(TestCase):
         # Total amount: 3*250 + 1*270 + 60 = 750 + 270 + 60 = 1080.00
         test_order.refresh_from_db()
         self.assertEqual(float(test_order.total_amount), 1080.00)
+
+    def test_admin_order_edit_capped_by_stock_and_allowed_after_restock(self):
+        """Admin cannot increase order quantity beyond available stock, but once restocked/new lot added, can increase."""
+        from apps.products.models import ProductLot
+        stock_prod = Product.objects.create(
+            name="Limited Stock Collectible",
+            slug="limited-stock-collectible",
+            sku="LSC-001",
+            price="100.00",
+            category=self.category,
+        )
+        lot = ProductLot.objects.create(
+            product=stock_prod,
+            lot_number="LOT-20261111-LIMITED",
+            trade_price="৳60.00",
+            mrp="৳100.00",
+            initial_quantity=3,
+            remaining_quantity=2, # Total 3: 1 bought in order, 2 remaining in stock
+            is_active=True,
+        )
+
+        order = Order.objects.create(
+            order_number="KS-STOCKTEST01",
+            customer_name="Stock Buyer",
+            customer_email="stock_buyer@example.com",
+            customer_phone="01733333333",
+            shipping_address="Banani, Dhaka",
+            shipping_cost=60.00,
+            total_amount=160.00,
+            status="pending",
+        )
+        item = OrderItem.objects.create(
+            order=order,
+            product=stock_prod,
+            product_name=stock_prod.name,
+            price=100.00,
+            quantity=1,
+            lot=lot,
+            lot_number=lot.lot_number,
+            trade_price=lot.trade_price,
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_token}")
+
+        # Attempt 1: Try to increase quantity to 4 (which needs +3, but only 2 available in stock). Must be REJECTED!
+        fail_payload = {
+            "items": [
+                {
+                    "id": item.id,
+                    "product_id": stock_prod.id,
+                    "quantity": 4, # 1 original + 3 needed > 2 remaining
+                }
+            ]
+        }
+        fail_res = self.client.patch(
+            f"/api/orders/{order.id}/",
+            data=json.dumps(fail_payload),
+            content_type="application/json"
+        )
+        self.assertEqual(fail_res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Only 2 additional unit(s) available in stock", fail_res.data["error"])
+
+        # Attempt 2: Increase to 3 (which needs +2, exactly available in stock). Must SUCCEED!
+        success_payload = {
+            "items": [
+                {
+                    "id": item.id,
+                    "product_id": stock_prod.id,
+                    "quantity": 3, # 1 original + 2 needed == 2 remaining
+                }
+            ]
+        }
+        success_res = self.client.patch(
+            f"/api/orders/{order.id}/",
+            data=json.dumps(success_payload),
+            content_type="application/json"
+        )
+        self.assertEqual(success_res.status_code, status.HTTP_200_OK)
+
+        lot.refresh_from_db()
+        self.assertEqual(lot.remaining_quantity, 0) # All stock now consumed
+
+        # Attempt 3: Now remaining stock is 0. Try to increase from 3 to 4. Must be REJECTED!
+        fail_res_2 = self.client.patch(
+            f"/api/orders/{order.id}/",
+            data=json.dumps(fail_payload),
+            content_type="application/json"
+        )
+        self.assertEqual(fail_res_2.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Attempt 4: Admin adds a new batch/lot (+5 units)
+        new_lot = ProductLot.objects.create(
+            product=stock_prod,
+            lot_number="LOT-20261111-RESTOCK",
+            trade_price="৳65.00",
+            mrp="৳110.00",
+            initial_quantity=5,
+            remaining_quantity=5,
+            is_active=True,
+        )
+
+        # Now trying to increase to 4 (needs +1 from the new lot) MUST SUCCEED!
+        restock_payload = {
+            "items": [
+                {
+                    "id": item.id,
+                    "product_id": stock_prod.id,
+                    "quantity": 4, # 3 from lot 1 + 1 from new_lot
+                }
+            ]
+        }
+        restock_res = self.client.patch(
+            f"/api/orders/{order.id}/",
+            data=json.dumps(restock_payload),
+            content_type="application/json"
+        )
+        self.assertEqual(restock_res.status_code, status.HTTP_200_OK)
+
+        new_lot.refresh_from_db()
+        self.assertEqual(new_lot.remaining_quantity, 4)
