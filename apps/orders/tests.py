@@ -235,3 +235,92 @@ class OrderSecurityAndOwnershipTests(TestCase):
         self.assertEqual(order_item.product_name, "Goku Ultra Instinct Figure")
         self.assertEqual(order_item.quantity, 2)
         self.assertEqual(float(order_item.price), 500.00)
+
+    def test_admin_edit_order_quantity_split_across_fifo_lots(self):
+        """When admin increases item quantity and older lot is exhausted, the additional unit comes from the next lot at its lot price."""
+        from apps.products.models import ProductLot
+        lot_prod = Product.objects.create(
+            name="Naruto Shippuden Figure",
+            slug="naruto-shippuden-figure",
+            sku="NSF-001",
+            price="270.00",
+            category=self.category,
+        )
+        lot1 = ProductLot.objects.create(
+            product=lot_prod,
+            lot_number="LOT-20261111-001",
+            trade_price="৳150.00",
+            mrp="৳250.00",
+            initial_quantity=3,
+            remaining_quantity=0, # Customer bought all 3 from lot1
+            is_active=True,
+        )
+        lot2 = ProductLot.objects.create(
+            product=lot_prod,
+            lot_number="LOT-20261111-002",
+            trade_price="৳160.00",
+            mrp="৳270.00",
+            initial_quantity=5,
+            remaining_quantity=5,
+            is_active=True,
+        )
+
+        test_order = Order.objects.create(
+            order_number="KS-LOTTEST01",
+            customer_name="Test Buyer",
+            customer_email="buyer@example.com",
+            customer_phone="01722222222",
+            shipping_address="Gulshan, Dhaka",
+            shipping_cost=60.00,
+            total_amount=810.00,
+            status="processing",
+        )
+        first_item = OrderItem.objects.create(
+            order=test_order,
+            product=lot_prod,
+            product_name=lot_prod.name,
+            price=250.00,
+            quantity=3,
+            lot=lot1,
+            lot_number=lot1.lot_number,
+            trade_price=lot1.trade_price,
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_token}")
+        patch_payload = {
+            "items": [
+                {
+                    "id": first_item.id,
+                    "product_id": lot_prod.id,
+                    "quantity": 4, # Increasing from 3 to 4!
+                }
+            ]
+        }
+        res = self.client.patch(
+            f"/api/orders/{test_order.id}/",
+            data=json.dumps(patch_payload),
+            content_type="application/json"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # Check DB state
+        order_items = list(test_order.items.order_by('id'))
+        self.assertEqual(len(order_items), 2)
+
+        # Item from Lot 1: 3 qty @ 250.00
+        self.assertEqual(order_items[0].lot_id, lot1.id)
+        self.assertEqual(order_items[0].quantity, 3)
+        self.assertEqual(float(order_items[0].price), 250.00)
+
+        # Item from Lot 2: 1 qty @ 270.00
+        self.assertEqual(order_items[1].lot_id, lot2.id)
+        self.assertEqual(order_items[1].quantity, 1)
+        self.assertEqual(float(order_items[1].price), 270.00)
+
+        # Lot 2 stock deducted from 5 to 4
+        lot2.refresh_from_db()
+        self.assertEqual(lot2.remaining_quantity, 4)
+
+        # Total amount: 3*250 + 1*270 + 60 = 750 + 270 + 60 = 1080.00
+        test_order.refresh_from_db()
+        self.assertEqual(float(test_order.total_amount), 1080.00)

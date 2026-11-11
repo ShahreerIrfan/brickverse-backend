@@ -674,51 +674,286 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
             if 'items' in request.data and isinstance(request.data['items'], list):
                 from apps.orders.models import OrderItem
+                from apps.products.models import Product, deduct_stock, restock_product
+                import re
+
+                is_active = (order.status != 'cancelled')
+                existing_items_map = {item.id: item for item in order.items.all()}
                 incoming_item_ids = []
+
+                # Step 1: Restock and delete items removed from the order
+                incoming_ids_set = {
+                    item_data.get('id') for item_data in request.data['items'] if item_data.get('id')
+                }
+                for old_id, old_item in list(existing_items_map.items()):
+                    if old_id not in incoming_ids_set:
+                        if is_active and not old_item.is_preorder and old_item.product:
+                            restock_product(
+                                old_item.product,
+                                old_item.quantity,
+                                bundle_items=old_item.bundle_items,
+                                lot_id=old_item.lot_id
+                            )
+                        old_item.delete()
+
+                # Step 2: Process each incoming item
                 for item_data in request.data['items']:
                     item_id = item_data.get('id')
-                    if item_id:
-                        incoming_item_ids.append(item_id)
-                        item_obj = order.items.filter(id=item_id).first()
-                        if item_obj:
-                            if 'quantity' in item_data:
-                                try:
-                                    item_obj.quantity = max(1, int(item_data['quantity']))
-                                except Exception:
-                                    pass
-                            if 'price' in item_data:
-                                try:
-                                    item_obj.price = Decimal(str(item_data['price']))
-                                except Exception:
-                                    pass
-                            if 'product_name' in item_data:
-                                item_obj.product_name = str(item_data['product_name']).strip()
-                            item_obj.save()
-                    else:
-                        p_name = str(item_data.get('product_name') or 'Custom Item').strip()
-                        qty = max(1, int(item_data.get('quantity') or 1))
-                        try:
-                            pr = Decimal(str(item_data.get('price') or '0'))
-                        except Exception:
-                            pr = Decimal('0.00')
-                        new_item = OrderItem.objects.create(
-                            order=order,
-                            product_name=p_name,
-                            quantity=qty,
-                            price=pr,
-                        )
-                        incoming_item_ids.append(new_item.id)
+                    raw_pid = item_data.get('product_id') or item_data.get('productId') or item_data.get('product')
+                    new_qty = max(1, int(item_data.get('quantity') or 1))
+                    custom_price_raw = item_data.get('price')
 
-                if incoming_item_ids:
-                    order.items.exclude(id__in=incoming_item_ids).delete()
+                    if item_id and item_id in existing_items_map:
+                        item_obj = existing_items_map[item_id]
+                        old_prod = item_obj.product
+                        old_qty = item_obj.quantity
+
+                        # Check if product itself changed
+                        product_changed = False
+                        if raw_pid is not None:
+                            old_pid_str = str(old_prod.id) if old_prod else ""
+                            if str(raw_pid) != old_pid_str:
+                                product_changed = True
+
+                        if product_changed:
+                            # 1) Restock old product
+                            if is_active and not item_obj.is_preorder and old_prod:
+                                restock_product(
+                                    old_prod,
+                                    old_qty,
+                                    bundle_items=item_obj.bundle_items,
+                                    lot_id=item_obj.lot_id
+                                )
+                            # 2) Resolve new product
+                            target_prod = Product.objects.filter(id=raw_pid).first() if raw_pid else None
+                            if target_prod:
+                                item_obj.product = target_prod
+                                item_obj.product_name = target_prod.name
+                                item_obj.bundle_items = []
+                                item_obj.is_preorder = False
+
+                                # Deduct stock for new product
+                                deductions = []
+                                if is_active and not target_prod.is_grouped:
+                                    try:
+                                        deductions = deduct_stock(target_prod, new_qty)
+                                    except Exception:
+                                        pass
+
+                                if deductions and len(deductions) > 0:
+                                    first_ded = deductions[0]
+                                    item_obj.quantity = first_ded["quantity"]
+                                    item_obj.lot = first_ded.get("lot")
+                                    item_obj.lot_number = first_ded.get("lot_number", "")
+                                    item_obj.trade_price = first_ded.get("trade_price", "")
+                                    ded_p = first_ded.get("selling_price") or first_ded.get("mrp")
+                                    try:
+                                        item_obj.price = Decimal(str(re.sub(r'[^0-9.]', '', str(ded_p))))
+                                    except Exception:
+                                        item_obj.price = Decimal(str(custom_price_raw or target_prod.price or '0'))
+                                    item_obj.save()
+                                    incoming_item_ids.append(item_obj.id)
+
+                                    for extra_ded in deductions[1:]:
+                                        extra_p = extra_ded.get("selling_price") or extra_ded.get("mrp")
+                                        try:
+                                            extra_p_val = Decimal(str(re.sub(r'[^0-9.]', '', str(extra_p))))
+                                        except Exception:
+                                            extra_p_val = item_obj.price
+                                        extra_item = OrderItem.objects.create(
+                                            order=order,
+                                            product=target_prod,
+                                            product_name=target_prod.name,
+                                            price=extra_p_val,
+                                            quantity=extra_ded["quantity"],
+                                            bundle_items=[],
+                                            is_preorder=False,
+                                            lot=extra_ded.get("lot"),
+                                            lot_number=extra_ded.get("lot_number", ""),
+                                            trade_price=extra_ded.get("trade_price", ""),
+                                        )
+                                        incoming_item_ids.append(extra_item.id)
+                                else:
+                                    item_obj.quantity = new_qty
+                                    if custom_price_raw is not None:
+                                        try:
+                                            item_obj.price = Decimal(str(custom_price_raw))
+                                        except Exception:
+                                            pass
+                                    item_obj.save()
+                                    incoming_item_ids.append(item_obj.id)
+                            else:
+                                item_obj.save()
+                                incoming_item_ids.append(item_obj.id)
+
+                        else:
+                            # Product is the same. Check if quantity changed
+                            if 'product_name' in item_data and item_data.get('product_name'):
+                                item_obj.product_name = str(item_data['product_name']).strip()
+
+                            if new_qty > old_qty:
+                                diff = new_qty - old_qty
+                                deductions = []
+                                if is_active and old_prod and not old_prod.is_grouped:
+                                    try:
+                                        deductions = deduct_stock(old_prod, diff)
+                                    except Exception:
+                                        pass
+
+                                if deductions and len(deductions) > 0:
+                                    current_lot_id = getattr(item_obj, 'lot_id', None)
+                                    first_ded = deductions[0]
+                                    first_ded_lot_id = first_ded.get('lot_id') or (first_ded.get('lot').id if first_ded.get('lot') else None)
+
+                                    if current_lot_id and first_ded_lot_id == current_lot_id:
+                                        # Same lot: simply increase quantity
+                                        item_obj.quantity += first_ded["quantity"]
+                                        item_obj.save()
+                                        incoming_item_ids.append(item_obj.id)
+                                        remaining_deductions = deductions[1:]
+                                    else:
+                                        # Different lot: original item keeps old_qty and its lot price!
+                                        item_obj.save()
+                                        incoming_item_ids.append(item_obj.id)
+                                        remaining_deductions = deductions
+
+                                    for extra_ded in remaining_deductions:
+                                        extra_p = extra_ded.get("selling_price") or extra_ded.get("mrp")
+                                        try:
+                                            extra_p_val = Decimal(str(re.sub(r'[^0-9.]', '', str(extra_p))))
+                                        except Exception:
+                                            extra_p_val = item_obj.price
+                                        extra_item = OrderItem.objects.create(
+                                            order=order,
+                                            product=old_prod,
+                                            product_name=item_obj.product_name,
+                                            price=extra_p_val,
+                                            quantity=extra_ded["quantity"],
+                                            bundle_items=item_obj.bundle_items,
+                                            is_preorder=False,
+                                            lot=extra_ded.get("lot"),
+                                            lot_number=extra_ded.get("lot_number", ""),
+                                            trade_price=extra_ded.get("trade_price", ""),
+                                        )
+                                        incoming_item_ids.append(extra_item.id)
+                                else:
+                                    # Fallback without lot deduction
+                                    item_obj.quantity = new_qty
+                                    if custom_price_raw is not None:
+                                        try:
+                                            item_obj.price = Decimal(str(custom_price_raw))
+                                        except Exception:
+                                            pass
+                                    item_obj.save()
+                                    incoming_item_ids.append(item_obj.id)
+
+                            elif new_qty < old_qty:
+                                diff = old_qty - new_qty
+                                if is_active and old_prod and not item_obj.is_preorder:
+                                    restock_product(
+                                        old_prod,
+                                        diff,
+                                        bundle_items=item_obj.bundle_items,
+                                        lot_id=item_obj.lot_id
+                                    )
+                                item_obj.quantity = new_qty
+                                if custom_price_raw is not None:
+                                    try:
+                                        item_obj.price = Decimal(str(custom_price_raw))
+                                    except Exception:
+                                        pass
+                                item_obj.save()
+                                incoming_item_ids.append(item_obj.id)
+
+                            else:
+                                # Quantity didn't change
+                                if custom_price_raw is not None:
+                                    try:
+                                        item_obj.price = Decimal(str(custom_price_raw))
+                                    except Exception:
+                                        pass
+                                item_obj.save()
+                                incoming_item_ids.append(item_obj.id)
+
+                    else:
+                        # Brand new item added to the order
+                        target_prod = Product.objects.filter(id=raw_pid).first() if raw_pid else None
+                        if not target_prod and item_data.get('product_name'):
+                            target_prod = Product.objects.filter(name__iexact=item_data.get('product_name')).first()
+
+                        if target_prod:
+                            deductions = []
+                            if is_active and not target_prod.is_grouped:
+                                try:
+                                    deductions = deduct_stock(target_prod, new_qty)
+                                except Exception:
+                                    pass
+
+                            if deductions and len(deductions) > 0:
+                                for ded in deductions:
+                                    ded_p = ded.get("selling_price") or ded.get("mrp")
+                                    try:
+                                        ded_p_val = Decimal(str(re.sub(r'[^0-9.]', '', str(ded_p))))
+                                    except Exception:
+                                        ded_p_val = Decimal(str(custom_price_raw or target_prod.price or '0'))
+                                    new_oi = OrderItem.objects.create(
+                                        order=order,
+                                        product=target_prod,
+                                        product_name=target_prod.name,
+                                        price=ded_p_val,
+                                        quantity=ded["quantity"],
+                                        bundle_items=[],
+                                        is_preorder=False,
+                                        lot=ded.get("lot"),
+                                        lot_number=ded.get("lot_number", ""),
+                                        trade_price=ded.get("trade_price", ""),
+                                    )
+                                    incoming_item_ids.append(new_oi.id)
+                            else:
+                                try:
+                                    pr = Decimal(str(custom_price_raw or target_prod.price or '0.00'))
+                                except Exception:
+                                    pr = Decimal('0.00')
+                                new_oi = OrderItem.objects.create(
+                                    order=order,
+                                    product=target_prod,
+                                    product_name=target_prod.name,
+                                    quantity=new_qty,
+                                    price=pr,
+                                )
+                                incoming_item_ids.append(new_oi.id)
+                        else:
+                            p_name = str(item_data.get('product_name') or 'Custom Item').strip()
+                            try:
+                                pr = Decimal(str(custom_price_raw or '0.00'))
+                            except Exception:
+                                pr = Decimal('0.00')
+                            new_oi = OrderItem.objects.create(
+                                order=order,
+                                product=None,
+                                product_name=p_name,
+                                quantity=new_qty,
+                                price=pr,
+                            )
+                            incoming_item_ids.append(new_oi.id)
+
+                # Authoritative order totals recalculation
+                actual_items_subtotal = sum(Decimal(str(oi.price)) * oi.quantity for oi in OrderItem.objects.filter(order=order))
+                shipping_cost_val = Decimal(str(order.shipping_cost or '0'))
+                if 'total_amount' in request.data and request.data.get('total_amount') is not None:
+                    try:
+                        order.total_amount = Decimal(str(request.data.get('total_amount')))
+                    except Exception:
+                        order.total_amount = actual_items_subtotal + shipping_cost_val
+                else:
+                    order.total_amount = actual_items_subtotal + shipping_cost_val
 
             order.save()
             if hasattr(order, '_prefetched_objects_cache'):
                 order._prefetched_objects_cache.clear()
 
-            kwargs['partial'] = True
-            response = super().update(request, *args, **kwargs)
-            return response
+            serializer = self.get_serializer(order)
+            return Response(serializer.data, status=status.HTTP_200_OK)
 
     def perform_destroy(self, instance):
         from django.db import transaction
