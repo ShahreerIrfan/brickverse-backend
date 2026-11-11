@@ -806,6 +806,8 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                                             item_obj.price = Decimal(str(custom_price_raw))
                                         except Exception:
                                             pass
+                                    if target_prod and target_prod.trade_price:
+                                        item_obj.trade_price = target_prod.trade_price
                                     item_obj.save()
                                     incoming_item_ids.append(item_obj.id)
                             else:
@@ -884,6 +886,8 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                                             item_obj.price = Decimal(str(custom_price_raw))
                                         except Exception:
                                             pass
+                                    if not item_obj.trade_price and old_prod and old_prod.trade_price:
+                                        item_obj.trade_price = old_prod.trade_price
                                     item_obj.save()
                                     incoming_item_ids.append(item_obj.id)
 
@@ -973,6 +977,7 @@ class OrderDetailUpdateView(generics.RetrieveUpdateDestroyAPIView):
                                     product_name=target_prod.name,
                                     quantity=new_qty,
                                     price=pr,
+                                    trade_price=target_prod.trade_price or "",
                                 )
                                 incoming_item_ids.append(new_oi.id)
                         else:
