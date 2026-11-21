@@ -65,6 +65,7 @@ class FooterColumnListView(generics.ListAPIView):
 
 
 class ContactMessageCreateView(generics.CreateAPIView):
+    permission_classes = [permissions.AllowAny]
     queryset = ContactMessage.objects.all()
     serializer_class = ContactMessageSerializer
 
@@ -154,13 +155,18 @@ class CouponDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class CouponValidateView(APIView):
     """Customer: Validate Coupon Code against cart subtotal"""
+    permission_classes = [permissions.AllowAny]
+
     def post(self, request):
         raw_code = request.data.get('code', '')
         if not raw_code:
             return Response({"valid": False, "error": "Please provide a coupon code."}, status=status.HTTP_400_BAD_REQUEST)
 
         code = str(raw_code).strip().upper()
-        subtotal = float(request.data.get('subtotal', 0) or 0)
+        try:
+            subtotal = max(0.0, float(request.data.get('subtotal', 0) or 0))
+        except (ValueError, TypeError):
+            subtotal = 0.0
 
         coupon = Coupon.objects.filter(code__iexact=code).first()
         if not coupon:
